@@ -3,22 +3,23 @@
 import numpy as np
 import torch
 
+
 class DataContainer(object):
-    def __init__(self, file, batch_size, im_shape, ep_len_read=20, episodes=200):
+    def __init__(self, file, batch_size, ep_len_read=20, episodes=200):
         self.file = file
         self.ep_len_read = ep_len_read
         self.ep_len_gen = ep_len_read
         self.episodes = episodes
         self.total_images = self.ep_len_read * self.episodes
         self.batch_size = batch_size
-        self.im_shape = im_shape
-        self.im_med = np.zeros(self.im_shape)
+        # self.im_shape = im_shape
+        # self.im_med = np.zeros(self.im_shape)
         self.images = None
 
         self.load_images(file)
 
         # TODO get a median image, not episode
-        self.im_med = np.median(self.images, axis=0)[0]
+        # self.im_med = np.median(self.images, axis=0)[0]
 
         # del self.single_image
         # self.sess.close()
@@ -54,7 +55,7 @@ class DataContainer(object):
         return self.get_n_random_episodes(1)[0]
 
     def get_batch_episodes(self):
-        self.get_n_random_episodes(self.batch_size)
+        return self.get_n_random_episodes(self.batch_size)
 
     def get_n_batches_images(self, n=10):
         ims = []

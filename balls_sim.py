@@ -120,7 +120,7 @@ class World(object):
         board = np.clip(board, 0, 1)
         return board.astype('uint8')
 
-    def draw_balls(self, obs_noise=None):
+    def draw(self, obs_noise=None):
 
         board = np.zeros(WORLD_SIZE)
         for body in self.bodies:
@@ -134,7 +134,7 @@ class World(object):
             board += np.exp(-(((self.I - pos_x) ** 2 + (self.J - pos_y) ** 2) / (body.r ** 2)) ** 4)
 
         board = np.clip(board, 0, 1)
-        return board
+        return board.astype('float32')
 
 
 

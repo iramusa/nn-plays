@@ -3,18 +3,19 @@
 Records images from simple sim
 """
 import simple_sim
+import balls_sim
 import os
 import numpy as np
 import torch
 
 
 # SIM = 'simple'
-SIM = 'single'
-# FILENAME = SIM + '-valid'
-FILENAME = SIM + '-train'
+SIM = 'balls'
+FILENAME = SIM + '-valid'
+# FILENAME = SIM + '-train'
 EPISODES_TRAIN = 1000
 EPISODES_VALID = 200
-EP_LEN = 20
+EP_LEN = 100
 
 
 class Record(object):
@@ -24,13 +25,14 @@ class Record(object):
         self.t = 0
         self.screen_list = []
         self.ep_list = []
-        self.filename = os.path.join('data-toy/', FILENAME + '.pt')
+        self.filename = os.path.join('data-balls/', FILENAME + '.pt')
 
     def run(self):
         total_episodes = EPISODES_TRAIN if 'train' in FILENAME else EPISODES_VALID
         while self.ep < total_episodes:
             print('Episode:', self.ep)
-            self.world = simple_sim.World()
+            # self.world = simple_sim.World()
+            self.world = balls_sim.World()
             self.screen_list = []
             for _ in range(EP_LEN):
                 self.world.run()

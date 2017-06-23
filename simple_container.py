@@ -5,13 +5,14 @@ import torch
 
 
 class DataContainer(object):
-    def __init__(self, file, batch_size, ep_len_read=20, episodes=200):
+    def __init__(self, file, batch_size, ep_len_read=20, episodes=200, shape=((28, 28, 1))):
         self.file = file
         self.ep_len_read = ep_len_read
         self.ep_len_gen = ep_len_read
         self.episodes = episodes
         self.total_images = self.ep_len_read * self.episodes
         self.batch_size = batch_size
+        self.im_shape = shape
         # self.im_shape = im_shape
         # self.im_med = np.zeros(self.im_shape)
         self.images = None
@@ -37,7 +38,7 @@ class DataContainer(object):
         t_rolls = np.random.randint(0, self.ep_len_read, n)
 
         random_ims = self.images[ep_rolls, t_rolls, ...]
-        return random_ims
+        return random_ims.reshape((n,) + self.im_shape)
 
     def get_batch_images(self):
         return self.get_n_random_images(self.batch_size).astype('float')
@@ -49,7 +50,7 @@ class DataContainer(object):
         ep_rolls = np.random.randint(0, self.episodes, n)
         random_eps = self.images[ep_rolls, :ep_len, ...].astype('float')
 
-        return random_eps
+        return random_eps.reshape((n, ep_len) + self.im_shape)
 
     def get_episode(self):
         return self.get_n_random_episodes(1)[0]

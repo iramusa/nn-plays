@@ -11,11 +11,11 @@ import torch
 
 # SIM = 'simple'
 SIM = 'balls'
-FILENAME = SIM + '-valid'
-# FILENAME = SIM + '-train'
-EPISODES_TRAIN = 1000
+# FILENAME = SIM + '-valid'
+FILENAME = SIM + '-train'
+EPISODES_TRAIN = 4000
 EPISODES_VALID = 200
-EP_LEN = 100
+EP_LEN = 50
 
 
 class Record(object):

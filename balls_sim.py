@@ -136,6 +136,15 @@ class World(object):
         board = np.clip(board, 0, 1)
         return board.astype('float32')
 
+    def give_numbers(self):
+        nums = np.zeros((N_BODIES, 2, 2))
+        for i, body in enumerate(self.bodies):
+            nums[i, 0, :] = body.pos/WORLD_LEN
+            nums[i, 1, :] = (body.vel+5)/10.0
+
+        return nums.astype('float32')
+
+
 
 
 

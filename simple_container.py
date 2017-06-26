@@ -12,12 +12,12 @@ class DataContainer(object):
         self.episodes = episodes
         self.total_images = self.ep_len_read * self.episodes
         self.batch_size = batch_size
-        self.im_shape = shape
-        # self.im_shape = im_shape
         # self.im_med = np.zeros(self.im_shape)
         self.images = None
 
         self.load_images(file)
+        # self.im_shape = self.images[0, 0].shape
+        self.im_shape = shape
 
         # TODO get a median image, not episode
         # self.im_med = np.median(self.images, axis=0)[0]

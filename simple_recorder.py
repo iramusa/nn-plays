@@ -11,11 +11,12 @@ import torch
 
 # SIM = 'simple'
 SIM = 'balls'
+# SIM = 'nums-single'
 # FILENAME = SIM + '-valid'
 FILENAME = SIM + '-train'
-EPISODES_TRAIN = 4000
+EPISODES_TRAIN = 1000
 EPISODES_VALID = 200
-EP_LEN = 50
+EP_LEN = 100
 
 
 class Record(object):
@@ -37,6 +38,7 @@ class Record(object):
             for _ in range(EP_LEN):
                 self.world.run()
                 observation = self.world.draw()
+                # observation = self.world.give_numbers()
                 self.screen_list.append(observation)
                 self.t += 1
 

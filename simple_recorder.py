@@ -10,10 +10,11 @@ import torch
 
 
 # SIM = 'simple'
-SIM = 'balls'
+# SIM = 'balls'
+SIM = 'single'
 # SIM = 'nums-single'
-# FILENAME = SIM + '-valid'
-FILENAME = SIM + '-train'
+FILENAME = SIM + '-valid'
+# FILENAME = SIM + '-train'
 EPISODES_TRAIN = 1000
 EPISODES_VALID = 200
 EP_LEN = 100

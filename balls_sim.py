@@ -4,7 +4,7 @@ import numpy as np
 
 WORLD_LEN = 28
 WORLD_SIZE = np.array((WORLD_LEN, WORLD_LEN))
-N_BODIES = 3
+N_BODIES = 1
 MAX_AX_V = 1
 V_STD = 0.8
 

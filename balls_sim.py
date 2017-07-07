@@ -36,6 +36,8 @@ class World(object):
 
         self.measurement_noise = kwargs.get('measurement_noise', 0.0)
 
+        #TODO add motion noise
+
         radius = kwargs.get('radius', 2.5)
         if self.radius_mode == 'uniform':
             self.radii = [radius for _ in range(self.n_bodies)]

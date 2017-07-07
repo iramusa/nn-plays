@@ -4,20 +4,14 @@ import numpy as np
 
 WORLD_LEN = 28
 WORLD_SIZE = np.array((WORLD_LEN, WORLD_LEN))
-N_BODIES = 1
 MAX_AX_V = 1
 V_STD = 0.8
-
-
-def new_speeds(m1, m2, v1, v2):
-    new_v2 = (2 * m1 * v1 + v2 * (m2 - m1)) / (m1 + m2)
-    new_v1 = new_v2 + (v2 - v1)
-    return new_v1, new_v2
 
 
 class Body(object):
     def __init__(self, pos, vel, r=4.0, m=1.0):
         self.pos = pos
+        self.measured_pos = np.copy(pos)
         self.vel = vel
         self.r = r
         self.m = m
@@ -33,24 +27,56 @@ class Body(object):
 
 
 class World(object):
-    def __init__(self):
+    def __init__(self, **kwargs):
+        self.n_bodies = kwargs.get('n_bodies', 1)
+        self.radius_mode = kwargs.get('radius_mode', 'uniform')
+        self.mass_mode = kwargs.get('mass_mode', 'uniform')
+        self.wall_action = kwargs.get('wall_action', 'pass')
+        self.ball_action = kwargs.get('ball_action', 'pass')
+
+        self.measurement_noise = kwargs.get('measurement_noise', 0.0)
+
+        radius = kwargs.get('radius', 2.5)
+        if self.radius_mode == 'uniform':
+            self.radii = [radius for _ in range(self.n_bodies)]
+        else:
+            raise ValueError('Bad radius_mode', self.radius_mode)
+
+        mass = kwargs.get('mass', 1.0)
+        if self.radius_mode == 'uniform':
+            self.masses = [mass for _ in range(self.n_bodies)]
+        elif self.radius_mode == 'radius_tied':
+            # mass proportional to r^2
+            self.masses = [r**2 for r in self.radii]
+        else:
+            raise ValueError('Bad mass_mode', self.mass_mode)
+
+        # spawn bodies
         self.bodies = []
-        for i in range(N_BODIES):
-            self.spawn()
+        for i in range(self.n_bodies):
+            self.spawn(radius=self.radii[i], mass=self.masses[i])
 
         # self.spawn_fake()
 
-        space = np.linspace(0, WORLD_LEN-1, WORLD_LEN)
+        space = np.linspace(0.5, WORLD_LEN-0.5, WORLD_LEN)
         self.I, self.J = np.meshgrid(space, space)
 
     def total_momentum(self):
+        """Total momentum should be constant if balls pass through walls
+
+        :return: m -- total momentum in system
+        """
         m = 0.0
         for body in self.bodies:
-            m += np.linalg.norm(body.vel) * body.m
+            m += np.sum(body.vel * body.m)
 
         return m
 
     def total_kinetic_e(self):
+        """Total kinetic energy should be constant all the time (elastic collisions).
+
+        :return:
+        """
         ke = 0.0
         for body in self.bodies:
             ke += np.sum(body.vel**2) * body.m
@@ -66,16 +92,21 @@ class World(object):
         self.bodies.append(Body(pos1, vel1))
         self.bodies.append(Body(pos2, vel2))
 
-    def spawn(self):
+    def spawn(self, radius, mass):
         reset_required = True
         while reset_required:
             # pos = np.random.randint(0, WORLD_LEN, 2)
             pos = WORLD_LEN * np.random.rand(2)
             # vel = np.random.randint(-MAX_AX_V, MAX_AX_V+1, 2)
             vel = V_STD * np.random.randn(2)
-            new_body = Body(pos, vel)
+            new_body = Body(pos, vel, r=radius, m=mass)
 
             reset_required = False
+
+            if np.any((new_body.pos - new_body.r) < 0) or np.any((new_body.pos + new_body.r) > WORLD_LEN):
+                reset_required = True
+                continue
+
             for body in self.bodies:
                 if new_body.check_collision(body):
                     reset_required = True
@@ -84,33 +115,56 @@ class World(object):
         self.bodies.append(new_body)
 
     def run(self, dt=1.0):
+        # state and measurement update
         for b1 in self.bodies:
             b1.pos += dt * b1.vel
+            b1.measured_pos = np.copy(b1.pos)
 
-            # reverse vel if wall was touched
-            above_lim = (b1.pos + b1.r) > WORLD_LEN
-            below_lim = (b1.pos - b1.r) < 0
-            b1.vel[above_lim] = -np.abs(b1.vel[above_lim])
-            b1.vel[below_lim] = np.abs(b1.vel[below_lim])
+            if self.measurement_noise == 0.0:
+                pass
+            else:
+                # add noise
+                b1.measured_pos += self.measurement_noise * np.random.randn(2)
 
-        for i, b1 in enumerate(self.bodies):
-            # avoid repeating the check
-            for b2 in self.bodies[i:]:
-                if b1 is b2:
-                    continue
+        # wall action
+        for b1 in self.bodies:
+            if self.wall_action == 'pass':
+                # reappear target on other side
+                b1.pos %= WORLD_LEN
+            elif self.wall_action == 'bounce':
+                # reverse vel if wall was touched
+                above_lim = (b1.pos + b1.r) > WORLD_LEN
+                below_lim = (b1.pos - b1.r) < 0
+                b1.vel[above_lim] = -np.abs(b1.vel[above_lim])
+                b1.vel[below_lim] = np.abs(b1.vel[below_lim])
+            else:
+                raise ValueError('Bad wall_action', self.wall_action)
 
-                d12 = b1.pos - b2.pos
-                d12_norm = np.linalg.norm(d12)
-                # if collision between balls
-                if d12_norm < (b1.r + b2.r):
-                    m1_c = (2 * b2.m) / (b2.m + b1.m)
-                    m2_c = (2 * b1.m) / (b2.m + b1.m)
-                    v12 = b1.vel - b2.vel
-                    v1_c = np.dot(v12, d12) * (d12/d12_norm**2)
-                    v2_c = np.dot(-v12, -d12) * (-d12/d12_norm**2)
+        # ball action
+        if self.ball_action == 'pass':
+            pass
+        elif self.ball_action == 'bounce':
+            # bounce balls
+            for i, b1 in enumerate(self.bodies):
+                # avoid repeating the check
+                for b2 in self.bodies[i:]:
+                    if b1 is b2:
+                        continue
 
-                    b1.vel -= m1_c * v1_c
-                    b2.vel -= m2_c * v2_c
+                    d12 = b1.pos - b2.pos
+                    d12_norm = np.linalg.norm(d12)
+                    if d12_norm < (b1.r + b2.r):
+                        # if collision between balls
+                        m1_c = (2 * b2.m) / (b2.m + b1.m)
+                        m2_c = (2 * b1.m) / (b2.m + b1.m)
+                        v12 = b1.vel - b2.vel
+                        v1_c = np.dot(v12, d12) * (d12 / d12_norm ** 2)
+                        v2_c = np.dot(-v12, -d12) * (-d12 / d12_norm ** 2)
+
+                        b1.vel -= m1_c * v1_c
+                        b2.vel -= m2_c * v2_c
+        else:
+            raise ValueError('Bad ball_action', self.ball_action)
 
     def draw_centres(self):
         board = np.zeros(WORLD_SIZE)
@@ -124,8 +178,8 @@ class World(object):
 
         board = np.zeros(WORLD_SIZE)
         for body in self.bodies:
-            pos_x = body.pos[0]
-            pos_y = body.pos[1]
+            pos_x = body.measured_pos[0]
+            pos_y = body.measured_pos[1]
 
             if obs_noise is not None:
                 pos_x += obs_noise * np.random.randn()

@@ -10,7 +10,7 @@ import torch
 simulation_config = {
     'n_bodies': 1,
     'radius_mode': 'uniform',
-    'radius': 2.5,
+    'radius': 3.5,
     'mass_mode': 'uniform',
     'mass': 1.0,
     'wall_action': 'pass',
@@ -21,10 +21,10 @@ simulation_config = {
 record_config = {
     'sim_type': 'balls',
     'sim_config': simulation_config,
-    # 'train': 'train',
-    'train': 'valid',
-    'n_episodes': 500,
-    # 'n_episodes': 1000,
+    'train': 'train',
+    # 'train': 'valid',
+    # 'n_episodes': 500,
+    'n_episodes': 1000,
     'episode_length': 100,
     'folder': 'data-balls/',
     'random_seed': 0

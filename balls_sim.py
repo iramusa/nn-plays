@@ -4,8 +4,18 @@ import numpy as np
 
 WORLD_LEN = 28
 WORLD_SIZE = np.array((WORLD_LEN, WORLD_LEN))
-MAX_AX_V = 1
 V_STD = 0.8
+
+default_config = {
+    'n_bodies': 1,
+    'radius_mode': 'uniform',
+    'radius': 3.5,
+    'mass_mode': 'uniform',
+    'mass': 1.0,
+    'wall_action': 'pass',
+    'ball_action': 'pass',
+    'measurement_noise': 0.0,
+}
 
 
 class Body(object):
@@ -99,7 +109,6 @@ class World(object):
         while reset_required:
             # pos = np.random.randint(0, WORLD_LEN, 2)
             pos = WORLD_LEN * np.random.rand(2)
-            # vel = np.random.randint(-MAX_AX_V, MAX_AX_V+1, 2)
             vel = V_STD * np.random.randn(2)
             new_body = Body(pos, vel, r=radius, m=mass)
 

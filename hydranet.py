@@ -14,7 +14,8 @@ from keras.layers.wrappers import TimeDistributed
 from keras.utils.visualize_util import plot as draw_network
 
 import numpy as np
-from tqdm import tqdm
+from tqdm import tqdm, trange
+import time
 
 import tensorflow as tf
 
@@ -36,14 +37,31 @@ V_SIZE = 16
 BATCH_SIZE = 32
 
 DEFAULT_SCHEME = {
-    'clear_percepts': 4,
-    'mixed_percepts': 8,
+    'clear_training': True,  # run training on clear episodes (non-masked percepts)
+    'clear_training_batches': 500,  # how many batches?
+    'guaranteed_percepts': 4,  # how many first percepts are guaranteed to be non-masked?
+    'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
+    'p_levels': np.sqrt(np.linspace(0.05, 0.99, 10)).tolist(),  # progressing probabilities of masking percepts
+    'p_level_batches': 200,  # how many batches per level
+    'p_final': 0.99,  # final probability level
+    'lr_final': 0.0002,
+    'final_batches': 2000,  # number of batches for final training
 }
 
 
 class HydraNet(object):
     def __init__(self, **kwargs):
         self.training_scheme = kwargs.get('training_scheme', DEFAULT_SCHEME)
+        self.clear_training = self.training_scheme.get('clear_training', True)
+        self.clear_training_batches = self.training_scheme.get('clear_training_batches', 500)
+        self.guaranteed_percepts = self.training_scheme.get('guaranteed_percepts', 4)
+        self.uncertain_percepts = self.training_scheme.get('uncertain_percepts', 8)
+        self.p_levels = self.training_scheme.get('p_levels', [])
+        self.p_level_batches = self.training_scheme.get('p_level_batches', 200)
+        self.p_final = self.training_scheme.get('p_final', None)
+        self.lr_final_ = self.training_scheme.get('lr_final', 0.0002)
+        self.final_batches = self.training_scheme.get('final_batches', 1000)
+
         self.v_size = kwargs.get('v_size', V_SIZE)
 
         # modules of network
@@ -62,8 +80,8 @@ class HydraNet(object):
         self.stepper = None
 
         # data containers
-        self.train_box = DataContainer('data-balls/balls-train.pt', batch_size=32, ep_len_read=EP_LEN)
-        self.test_box = DataContainer('data-balls/balls-valid.pt', batch_size=32, ep_len_read=EP_LEN)
+        # self.train_box = DataContainer('data-balls/balls-train.pt', batch_size=32, ep_len_read=EP_LEN)
+        # self.test_box = DataContainer('data-balls/balls-valid.pt', batch_size=32, ep_len_read=EP_LEN)
 
         # initialisation
         self.build_modules()
@@ -106,16 +124,16 @@ class HydraNet(object):
         # TODO: aux variables: loss, position, velocity
         # TODO: generator (decoder with noise)
 
-    def load_modules(self, tag='0'):
+    def load_modules(self, folder=FOLDER_MODELS, tag='0'):
         for module in self.modules:
-            fpath = '{}/{}-{}.hdf5'.format(FOLDER_MODELS, module.name, tag)
+            fpath = '{}/{}-{}.hdf5'.format(folder, module.name, tag)
             module.load_weights(fpath)
 
         self.lstm_replay.set_weights(self.lstm_train.get_weights())
 
-    def save_modules(self, tag='0'):
+    def save_modules(self, folder=FOLDER_MODELS, tag='0'):
         for module in self.modules:
-            fpath = '{}/{}-{}.hdf5'.format(FOLDER_MODELS, module.name, tag)
+            fpath = '{}/{}-{}.hdf5'.format(folder, module.name, tag)
             module.save_weights(fpath)
 
     def build_heads(self):
@@ -149,10 +167,48 @@ class HydraNet(object):
         m.summary()
         self.stepper = m
 
-    def train_pred_ae(self, n_batches=100, ):
+# --------------------- TRAINING -------------------------------
+
+    def mask_percepts(self, images, p):
+        images_masked = np.copy(images)
+        for_removal = np.random.random(EP_LEN) < p
+        clear_percepts = self.guaranteed_percepts + np.random.randint(0, self.uncertain_percepts)
+        for_removal[0:clear_percepts] = False
+        images_masked[:, for_removal] = 0
+        return images
+
+    def train_pred_ae(self, image_getter, p=0.0, test=False):
+        images = image_getter()
+        if p > 0.0:
+            images_masked = self.mask_percepts(images, p)
+        else:
+            images_masked = images
+
+        if test:
+            loss = self.pred_ae.test_on_batch(images_masked[:, 0:-SERIES_SHIFT, ...],
+                                                   images[:, SERIES_SHIFT:, ...])
+        else:
+            loss = self.pred_ae.train_on_batch(images_masked[:, 0:-SERIES_SHIFT, ...],
+                                                    images[:, SERIES_SHIFT:, ...])
+        return loss
+
+    def execute_scheme(self, train_getter, test_getter):
+        if self.clear_training:
+            bar = trange(self.clear_training_batches)
+            for i in bar:
+                # self.train_pred_ae(train_getter, p=0.0)
+                time.sleep(2)
+                tqdm.write('hello at %i' % i)
+
+        while len(self.p_levels) > 0:
+            pass
+
+        if self.p_final is not None:
+            pass
 
 if __name__ == '__main__':
     hydra = HydraNet()
+    hydra.execute_scheme(0,0)
 
 
 

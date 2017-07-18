@@ -8,7 +8,7 @@ from balls_sim import WORLD_LEN
 
 
 class DataContainer(object):
-    def __init__(self, file, batch_size, ep_len_read=20, episodes=200, shape=((28, 28, 1))):
+    def __init__(self, file, batch_size, ep_len_read=20, shape=((28, 28, 1))):
         self.file = file
         self.ep_len_read = ep_len_read
         self.batch_size = batch_size
@@ -16,6 +16,7 @@ class DataContainer(object):
         self.n_episodes = None
         self.record = None
         self.images = None
+        self.images_populated = False
 
         self.load_record(file)
 
@@ -32,9 +33,12 @@ class DataContainer(object):
         self.n_episodes = self.record['n_episodes']
 
     def populate_images(self):
-        self.images = np.zeros((self.n_episodes, self.ep_len_read) + self.im_shape)
-        for i, episode in enumerate(self.record['episodes']):
-            self.images[i, ...] = self.episode2images(episode)
+        if self.images_populated:
+            return
+        else:
+            self.images = np.zeros((self.n_episodes, self.ep_len_read) + self.im_shape)
+            for i, episode in enumerate(self.record['episodes']):
+                self.images[i, ...] = self.episode2images(episode)
 
     def destroy_images(self):
         self.images = None

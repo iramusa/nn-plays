@@ -35,6 +35,7 @@ EP_LEN = 100 - SERIES_SHIFT
 V_SIZE = 16
 
 BATCH_SIZE = 32
+TEST_EVERY_N_BATCHES = 10
 
 DEFAULT_SCHEME = {
     'clear_training': True,  # run training on clear episodes (non-masked percepts)
@@ -51,6 +52,7 @@ DEFAULT_SCHEME = {
 
 class HydraNet(object):
     def __init__(self, **kwargs):
+        # training configuration
         self.training_scheme = kwargs.get('training_scheme', DEFAULT_SCHEME)
         self.clear_training = self.training_scheme.get('clear_training', True)
         self.clear_training_batches = self.training_scheme.get('clear_training_batches', 500)
@@ -62,31 +64,32 @@ class HydraNet(object):
         self.lr_final_ = self.training_scheme.get('lr_final', 0.0002)
         self.final_batches = self.training_scheme.get('final_batches', 1000)
 
+        # loss trackers
+        self.pred_loss_train = []
+        self.pred_loss_test = []
+
+        # network configuration
         self.v_size = kwargs.get('v_size', V_SIZE)
 
         # modules of network
         self.encoder = None
         self.decoder = None
-        self.lstm_train = None
+        self.state_pred_train = None
+
+        # special layers
         self.lstm_replay = None
-
-        # lstm_replay purposely skipped (weights are copied from lstm_train
-        self.modules = [self.encoder, self.decoder, self.lstm_train]
-
-        # self.state_sampler = None
 
         # full networks
         self.pred_ae = None
         self.stepper = None
 
-        # data containers
-        # self.train_box = DataContainer('data-balls/balls-train.pt', batch_size=32, ep_len_read=EP_LEN)
-        # self.test_box = DataContainer('data-balls/balls-valid.pt', batch_size=32, ep_len_read=EP_LEN)
-
-        # initialisation
+        # build network
         self.build_modules()
         # self.load_modules()
         self.build_heads()
+
+        # lstm_replay purposely skipped (weights are copied from lstm_train)
+        self.modules = [self.encoder, self.decoder, self.state_pred_train]
 
     def build_modules(self):
         # build encoder
@@ -95,9 +98,9 @@ class HydraNet(object):
         h = Convolution2D(8, 3, 3, subsample=(2, 2), activation='relu', border_mode='same')(h)
         h = Reshape((392,))(h)
         v = Dense(self.v_size, activation='relu')(h)
-        m = Model(input_im, v, name='encoder')
 
-        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name))
+        m = Model(input_im, v, name='encoder')
+        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
         m.summary()
         self.encoder = m
 
@@ -109,14 +112,20 @@ class HydraNet(object):
         h = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(h)
         h = UpSampling2D((2, 2))(h)
         output_im = Convolution2D(1, 5, 5, activation='sigmoid', border_mode='same')(h)
-        m = Model(input_v, output_im, name='decoder')
 
-        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name))
+        m = Model(input_v, output_im, name='decoder')
+        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
         m.summary()
         self.decoder = m
 
         # lstm for training
-        self.lstm_train = LSTM(V_SIZE, return_sequences=True)
+        input_vs = Input(shape=(EP_LEN - SERIES_SHIFT, self.v_size,))
+        output_vs = LSTM(V_SIZE, return_sequences=True)(input_vs)
+
+        m = Model(input_vs, output_vs, name='state_pred_train')
+        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
+        m.summary()
+        self.state_pred_train = m
 
         # lstm for replays
         self.lstm_replay = LSTM(V_SIZE, stateful=True)
@@ -129,7 +138,7 @@ class HydraNet(object):
             fpath = '{}/{}-{}.hdf5'.format(folder, module.name, tag)
             module.load_weights(fpath)
 
-        self.lstm_replay.set_weights(self.lstm_train.get_weights())
+        self.lstm_replay.set_weights(self.state_pred_train.get_weights())
 
     def save_modules(self, folder=FOLDER_MODELS, tag='0'):
         for module in self.modules:
@@ -146,24 +155,23 @@ class HydraNet(object):
                                              IM_CHANNELS))
 
         h = td1(input_ims)
-        h = self.lstm_train(h)
-        td2 = TimeDistributed(self.decoder, input_shape=((EP_LEN, V_SIZE)))
+        h = self.state_pred_train(h)
+        td2 = TimeDistributed(self.decoder, input_shape=(EP_LEN, self.v_size))
         output_preds = td2(h)
         m = Model(input_ims, output_preds, name='pred_ae_train')
-        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name))
+        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
         m.summary()
         m.compile(optimizer=Adam(lr=0.001), loss='mse')
         self.pred_ae = m
 
         # build replayer
         input_im = Input(batch_shape=(1, IM_WIDTH, IM_HEIGHT, IM_CHANNELS))
-
         h = self.encoder(input_im)
         h = Reshape((1, self.v_size))(h)
         h = self.lstm_replay(h)
         output_recon = self.decoder(h)
         m = Model(input_im, output_recon, name='stepper')
-        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name))
+        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
         m.summary()
         self.stepper = m
 
@@ -186,29 +194,78 @@ class HydraNet(object):
 
         if test:
             loss = self.pred_ae.test_on_batch(images_masked[:, 0:-SERIES_SHIFT, ...],
-                                                   images[:, SERIES_SHIFT:, ...])
+                                              images[:, SERIES_SHIFT:, ...])
         else:
             loss = self.pred_ae.train_on_batch(images_masked[:, 0:-SERIES_SHIFT, ...],
-                                                    images[:, SERIES_SHIFT:, ...])
+                                               images[:, SERIES_SHIFT:, ...])
         return loss
 
     def execute_scheme(self, train_getter, test_getter):
+        postfix = {}
         if self.clear_training:
-            bar = trange(self.clear_training_batches)
+            current_p = 0.0
+            print('Current p:', current_p)
+            bar = trange(self.p_level_batches)
             for i in bar:
-                # self.train_pred_ae(train_getter, p=0.0)
-                time.sleep(2)
-                tqdm.write('hello at %i' % i)
+                self.pred_loss_train.append(self.train_pred_ae(train_getter, p=current_p))
+                smooth_loss = np.mean(self.pred_loss_train[-10:])
+                postfix['L train'] = smooth_loss
+
+                if i % TEST_EVERY_N_BATCHES == 0:
+                    self.pred_loss_test.append(self.train_pred_ae(test_getter, p=current_p, test=True))
+                    smooth_loss = np.mean(self.pred_loss_test[-4:])
+                    postfix['L test'] = smooth_loss
+
+                bar.set_postfix(**postfix)
+
+        self.save_modules()
 
         while len(self.p_levels) > 0:
-            pass
+            current_p = self.p_levels.pop(0)
+
+            print('Current p:', current_p)
+            bar = trange(self.p_level_batches)
+            for i in bar:
+                self.pred_loss_train.append(self.train_pred_ae(train_getter, p=current_p))
+                smooth_loss = np.mean(self.pred_loss_train[-10:])
+                postfix['L train'] = smooth_loss
+
+                if i % TEST_EVERY_N_BATCHES == 0:
+                    self.pred_loss_test.append(self.train_pred_ae(test_getter, p=current_p, test=True))
+                    smooth_loss = np.mean(self.pred_loss_test[-4:])
+                    postfix['L test'] = smooth_loss
+
+                bar.set_postfix(**postfix)
+
+        self.save_modules()
 
         if self.p_final is not None:
-            pass
+            current_p = self.p_final
+            print('Current p:', current_p)
+            bar = trange(self.p_level_batches)
+            for i in bar:
+                self.pred_loss_train.append(self.train_pred_ae(train_getter, p=current_p))
+                smooth_loss = np.mean(self.pred_loss_train[-10:])
+                postfix['L train'] = smooth_loss
+
+                if i % TEST_EVERY_N_BATCHES == 0:
+                    self.pred_loss_test.append(self.train_pred_ae(test_getter, p=current_p, test=True))
+                    smooth_loss = np.mean(self.pred_loss_test[-4:])
+                    postfix['L test'] = smooth_loss
+
+                bar.set_postfix(**postfix)
+        self.save_modules()
+
 
 if __name__ == '__main__':
+    train_box = DataContainer('data-balls/balls-train.pt', batch_size=32, ep_len_read=EP_LEN)
+    test_box = DataContainer('data-balls/balls-valid.pt', batch_size=32, ep_len_read=EP_LEN)
+    train_box.populate_images()
+    test_box.populate_images()
+
     hydra = HydraNet()
-    hydra.execute_scheme(0,0)
+    hydra.load_modules()
+    hydra.execute_scheme(train_box.get_batch_episodes, test_box.get_batch_episodes)
 
 
 

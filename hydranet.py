@@ -38,7 +38,7 @@ IM_SHAPE = (IM_WIDTH, IM_HEIGHT, IM_CHANNELS)
 SERIES_SHIFT = 1
 EP_LEN = 100 - SERIES_SHIFT
 
-V_SIZE = 64
+V_SIZE = 128
 
 BATCH_SIZE = 32
 TEST_EVERY_N_BATCHES = 10
@@ -48,8 +48,8 @@ DEFAULT_SCHEME = {
     # 'clear_training': False,  # run training on clear episodes (non-masked percepts)
     'clear_batches': 500,  # how many batches?
     'lr_initial': 0.001,
-    'guaranteed_percepts': 4,  # how many first percepts are guaranteed to be non-masked?
-    'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
+    'guaranteed_percepts': 8,  # how many first percepts are guaranteed to be non-masked?
+    'uncertain_percepts': 0,  # how many further have a high chance to be non-masked?
     'p_levels': np.sqrt(np.linspace(0.05, 0.99, 10)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
     'p_level_batches': 400,  # how many batches per level
@@ -204,15 +204,22 @@ class HydraNet(object):
 
 # --------------------- TRAINING -------------------------------
 
-    def mask_percepts(self, images, p):
+    def mask_percepts(self, images, p, return_indices=False):
         images_masked = np.copy(images)
         for_removal = np.random.random(EP_LEN) < p
-        clear_percepts = self.guaranteed_percepts + np.random.randint(0, self.uncertain_percepts)
+        if self.uncertain_percepts > 0:
+            clear_percepts = self.guaranteed_percepts + np.random.randint(0, self.uncertain_percepts)
+        else:
+            clear_percepts = self.guaranteed_percepts
         for_removal[0:clear_percepts] = False
         images_masked[:, for_removal, ...] = 0
-        return images_masked
 
-    def train_pred_ae(self, image_getter, p=0.0, test=False):
+        if return_indices:
+            return images_masked, for_removal
+        else:
+            return images_masked
+
+    def train_batch_pred_ae(self, image_getter, p=0.0, test=False):
         images = image_getter()
         if p > 0.0:
             images_masked = self.mask_percepts(images, p)
@@ -236,12 +243,12 @@ class HydraNet(object):
             print('Current p:', current_p)
             bar = trange(self.clear_batches)
             for i in bar:
-                self.pred_loss_train.append(self.train_pred_ae(train_getter, p=current_p))
+                self.pred_loss_train.append(self.train_batch_pred_ae(train_getter, p=current_p))
                 smooth_loss = np.mean(self.pred_loss_train[-10:])
                 postfix['L train'] = smooth_loss
 
                 if i % TEST_EVERY_N_BATCHES == 0:
-                    self.pred_loss_test.append(self.train_pred_ae(test_getter, p=current_p, test=True))
+                    self.pred_loss_test.append(self.train_batch_pred_ae(test_getter, p=current_p, test=True))
                     smooth_loss = np.mean(self.pred_loss_test[-4:])
                     postfix['L test'] = smooth_loss
 
@@ -255,12 +262,12 @@ class HydraNet(object):
             print('Current p:', current_p)
             bar = trange(self.p_level_batches)
             for i in bar:
-                self.pred_loss_train.append(self.train_pred_ae(train_getter, p=current_p))
+                self.pred_loss_train.append(self.train_batch_pred_ae(train_getter, p=current_p))
                 smooth_loss = np.mean(self.pred_loss_train[-10:])
                 postfix['L train'] = smooth_loss
 
                 if i % TEST_EVERY_N_BATCHES == 0:
-                    self.pred_loss_test.append(self.train_pred_ae(test_getter, p=current_p, test=True))
+                    self.pred_loss_test.append(self.train_batch_pred_ae(test_getter, p=current_p, test=True))
                     smooth_loss = np.mean(self.pred_loss_test[-4:])
                     postfix['L test'] = smooth_loss
 
@@ -273,12 +280,12 @@ class HydraNet(object):
             print('Current p:', current_p)
             bar = trange(self.final_batches)
             for i in bar:
-                self.pred_loss_train.append(self.train_pred_ae(train_getter, p=current_p))
+                self.pred_loss_train.append(self.train_batch_pred_ae(train_getter, p=current_p))
                 smooth_loss = np.mean(self.pred_loss_train[-10:])
                 postfix['L train'] = smooth_loss
 
                 if i % TEST_EVERY_N_BATCHES == 0:
-                    self.pred_loss_test.append(self.train_pred_ae(test_getter, p=current_p, test=True))
+                    self.pred_loss_test.append(self.train_batch_pred_ae(test_getter, p=current_p, test=True))
                     smooth_loss = np.mean(self.pred_loss_test[-4:])
                     postfix['L test'] = smooth_loss
 
@@ -291,35 +298,43 @@ class HydraNet(object):
     def plot_losses(self, tag=0):
         plt.plot(self.pred_loss_train)
         batches = np.arange(len(self.pred_loss_test)) * TEST_EVERY_N_BATCHES
-        plt.plot(self.pred_loss_train, batches)
+        plt.plot(batches, self.pred_loss_test)
         plt.title('Loss')
         plt.ylabel('loss')
         plt.xlabel('updates')
         plt.legend(['train', 'test'])
-        fpath = '{}/loss-{}.gif'.format(FOLDER_PLOTS, tag)
+        fpath = '{}/loss-{}.png'.format(FOLDER_PLOTS, tag)
         plt.savefig(fpath)
 
-    def draw_pred_gif(self, test_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False, tag=0):
-        episode = test_getter()
-        episode = episode[0, ...].reshape((1,) + episode.shape[1:])
-        episode_masked = self.mask_percepts(episode, p)
-        net_preds = self.pred_ae.predict(episode_masked[:, 0:-SERIES_SHIFT, ...])
+    def draw_pred_gif(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False, tag=0):
+        ep_images, poses = full_getter()
+        ep_images = ep_images[0, ...].reshape((1,) + ep_images.shape[1:])
+        ep_images_masked, removed_percepts = self.mask_percepts(ep_images, p, return_indices=True)
+        net_preds = self.pred_ae.predict(ep_images_masked[:, 0:-SERIES_SHIFT, ...])
 
         # stepper predictions
         stepper_pred = []
         if use_stepper:
             self.stepper.reset_states()
             for t in range(EP_LEN-SERIES_SHIFT):
-                im = episode_masked[:, t, ...]
-                pred = self.stepper.predict(im)
+                im = ep_images_masked[:, t, ...]
                 stepper_pred.append(self.stepper.predict(im))
 
         pf_pred = []
         if use_pf:
-            pf = ParticleFilter(sim_config)
+            pf = ParticleFilter(sim_config, n_particles=5000)
             for t in range(EP_LEN-SERIES_SHIFT):
-                im = episode_masked[:, t, ...]
-                pass
+                if not removed_percepts[t]:
+                    pose = poses[0, t, 0, :]
+                    pf.update(pose)
+
+                # add noise only if next percept is available
+                if t+1 < EP_LEN-SERIES_SHIFT and not removed_percepts[t+1]:
+                    pf.resample()
+                    pf.add_noise()
+
+                pf.predict()
+                pf_pred.append(pf.draw())
 
         # create header with labels
         col = np.zeros((HEADER_HEIGHT, 1))
@@ -344,13 +359,13 @@ class HydraNet(object):
         frames = []
         for t in range(EP_LEN - SERIES_SHIFT):
             images = []
-            images.append(episode[0, t+SERIES_SHIFT, :, :, 0])
+            images.append(ep_images[0, t+SERIES_SHIFT, :, :, 0])
             images.append(net_preds[0, t, :, :, 0])
             if use_stepper:
                 images.append(stepper_pred[t][0, :, :, 0])
 
             if use_pf:
-                images.append(pf_pred[t])
+                images.append(pf_pred[t][:, :, 0])
 
             table = [col]
             for image in images:
@@ -379,6 +394,7 @@ if __name__ == '__main__':
     hydra = HydraNet()
     # hydra.load_modules()
     hydra.execute_scheme(train_box.get_batch_episodes, test_box.get_batch_episodes)
-
+    hydra.plot_losses()
+    hydra.draw_pred_gif(test_box.get_batch_episodes, use_stepper=True)
 
 

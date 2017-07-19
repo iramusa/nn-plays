@@ -13,6 +13,8 @@ class DataContainer(object):
         self.ep_len_read = ep_len_read
         self.batch_size = batch_size
 
+        self.sim_config = None
+
         self.n_episodes = None
         self.record = None
         self.images = None
@@ -31,6 +33,7 @@ class DataContainer(object):
     def load_record(self, file):
         self.record = torch.load(file)
         self.n_episodes = self.record['n_episodes']
+        self.sim_config = self.record['sim_config']
 
     def populate_images(self):
         if self.images_populated:
@@ -85,8 +88,22 @@ class DataContainer(object):
 
             return images
 
-
         return images
+
+    def get_n_random_episodes_full(self, n=2):
+        eps = self.get_n_random_structured_episodes(n)
+        images = np.array([self.episode2images(ep) for ep in eps])
+
+        eps_poses = []
+        for ep in eps:
+            poses = []
+            for t in ep['t_list']:
+                poses.append(t['poses'])
+
+            eps_poses.append(poses)
+
+        poses = np.array(eps_poses)
+        return images, poses
 
     def get_episode(self):
         return self.get_n_random_episodes(1)[0]

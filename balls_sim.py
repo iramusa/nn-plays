@@ -15,6 +15,7 @@ default_config = {
     'wall_action': 'pass',
     'ball_action': 'pass',
     'measurement_noise': 0.0,
+    'dynamics_noise': 0.001,
 }
 
 
@@ -38,17 +39,16 @@ class Body(object):
 
 class World(object):
     def __init__(self, **kwargs):
-        self.n_bodies = kwargs.get('n_bodies', 1)
-        self.radius_mode = kwargs.get('radius_mode', 'uniform')
-        self.mass_mode = kwargs.get('mass_mode', 'uniform')
-        self.wall_action = kwargs.get('wall_action', 'pass')
-        self.ball_action = kwargs.get('ball_action', 'pass')
+        self.n_bodies = kwargs['n_bodies']
+        self.radius_mode = kwargs['radius_mode']
+        self.mass_mode = kwargs['mass_mode']
+        self.wall_action = kwargs['wall_action']
+        self.ball_action = kwargs['ball_action']
 
-        self.measurement_noise = kwargs.get('measurement_noise', 0.0)
+        self.measurement_noise = kwargs['measurement_noise']
+        self.dynamics_noise = kwargs['dynamics_noise']
 
-        #TODO add motion noise
-
-        radius = kwargs.get('radius', 2.5)
+        radius = kwargs['radius']
         if self.radius_mode == 'uniform':
             self.radii = [radius for _ in range(self.n_bodies)]
         else:
@@ -128,7 +128,9 @@ class World(object):
     def run(self, dt=1.0):
         # state and measurement update
         for b1 in self.bodies:
-            b1.pos += dt * b1.vel
+            dv = self.dynamics_noise * np.random.randn(2)
+            b1.pos += dt * b1.vel + (dv * dt**2 / 2)
+            b1.vel += dv*dt
             b1.measured_pos = np.copy(b1.pos)
 
             if self.measurement_noise == 0.0:

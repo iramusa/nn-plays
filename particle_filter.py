@@ -17,32 +17,32 @@ def norm_pdf(x):
 
 class ParticleFilter(object):
     def __init__(self, sim_config=default_config, n_particles=10000):
-        self.sim_config = sim_config
+        self.sim_config = default_config
+        self.sim_config.update(sim_config)
         self.n = n_particles
         self.parts = []
 
-        self.n_targets = sim_config.get('n_targets', 1)
+        self.n_targets = sim_config['n_bodies']
 
-        self.measurement_noise = sim_config.get('measurement_noise', 0.0)
+        self.measurement_noise = sim_config['measurement_noise']
         if self.measurement_noise == 0.0:
             self.measurement_noise = 0.05
 
-        self.dynamics_noise = sim_config.get('dynamics_noise', 0.0)
+        self.dynamics_noise = sim_config['dynamics_noise']
         if self.dynamics_noise == 0.0:
-            self.dynamics_noise = 0.5
+            self.dynamics_noise = 0.1
 
         for _ in range(self.n):
-            self.parts.append(balls_sim.World(**default_config))
+            self.parts.append(balls_sim.World(**sim_config))
         self.w = np.ones(n_particles)/n_particles
 
         space = np.linspace(0.5, WORLD_LEN - 0.5, WORLD_LEN)
         self.I, self.J = np.meshgrid(space, space)
 
-    def add_noise(self):
+    def add_noise(self, noise_level=0.2):
         for part in self.parts:
             for body in part.bodies:
-                body.vel += self.dynamics_noise * np.random.randn(2)
-                # body.pos += self.dynamics_noise * np.random.randn(2)
+                body.vel += noise_level * np.random.randn(2)
 
     def predict(self):
         for part in self.parts:

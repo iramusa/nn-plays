@@ -8,7 +8,7 @@ from keras.models import Model, Sequential
 from keras.layers import Input, Dense
 from keras.optimizers import Adam, Adadelta, RMSprop, SGD
 from keras.layers import Input, Dense, Convolution2D, Deconvolution2D, MaxPooling2D,\
-    UpSampling2D, Merge, LSTM, Flatten, ZeroPadding2D, Reshape, BatchNormalization, Dropout
+    UpSampling2D, Merge, LSTM, GRU, Flatten, ZeroPadding2D, Reshape, BatchNormalization, Dropout
 from keras.layers.wrappers import TimeDistributed
 from keras.utils.visualize_util import plot as draw_network
 
@@ -48,8 +48,8 @@ DEFAULT_SCHEME = {
     # 'clear_training': False,  # run training on clear episodes (non-masked percepts)
     'clear_batches': 500,  # how many batches?
     'lr_initial': 0.001,
-    'guaranteed_percepts': 8,  # how many first percepts are guaranteed to be non-masked?
-    'uncertain_percepts': 0,  # how many further have a high chance to be non-masked?
+    'guaranteed_percepts': 5,  # how many first percepts are guaranteed to be non-masked?
+    'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
     'p_levels': np.sqrt(np.linspace(0.05, 0.99, 10)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
     'p_level_batches': 400,  # how many batches per level
@@ -98,7 +98,7 @@ class HydraNet(object):
         self.state_pred_train = None
 
         # special layers
-        self.lstm_replay = None
+        self.gru_replay = None
 
         # full networks
         self.pred_ae = None
@@ -109,7 +109,7 @@ class HydraNet(object):
         # self.load_modules()
         self.build_heads()
 
-        # lstm_replay purposely skipped (weights are copied from lstm_train)
+        # gru_replay purposely skipped (weights are copied from gru_train)
         self.modules = [self.encoder, self.decoder, self.state_pred_train]
 
     def build_modules(self):
@@ -139,17 +139,18 @@ class HydraNet(object):
         m.summary()
         self.decoder = m
 
-        # lstm for training
+        # gru for training
         input_vs = Input(shape=(EP_LEN - SERIES_SHIFT, self.v_size,))
-        output_vs = LSTM(V_SIZE, return_sequences=True)(input_vs)
+        # output_vs = LSTM(V_SIZE, return_sequences=True)(input_vs)
+        output_vs = GRU(V_SIZE, return_sequences=True)(input_vs)
 
         m = Model(input_vs, output_vs, name='state_pred_train')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
         m.summary()
         self.state_pred_train = m
 
-        # lstm for replays
-        self.lstm_replay = LSTM(V_SIZE, stateful=True)
+        # gru for replays
+        self.gru_replay = GRU(V_SIZE, stateful=True)
 
         # TODO: aux variables: loss, position, velocity
         # TODO: generator (decoder with noise)
@@ -160,7 +161,7 @@ class HydraNet(object):
             print('Loading {} from {}'.format(module.name, fpath))
             module.load_weights(fpath)
 
-        self.lstm_replay.set_weights(self.state_pred_train.get_weights())
+        self.gru_replay.set_weights(self.state_pred_train.get_weights())
 
     def save_modules(self, folder=FOLDER_MODELS, tag='0'):
         for module in self.modules:
@@ -170,7 +171,7 @@ class HydraNet(object):
 
     def load_model(self, fpath):
         self.pred_ae.load_weights(fpath)
-        self.lstm_replay.set_weights(self.state_pred_train.get_weights())
+        self.gru_replay.set_weights(self.state_pred_train.get_weights())
 
     def build_heads(self):
         # build predictive autoencoder
@@ -195,7 +196,7 @@ class HydraNet(object):
         input_im = Input(batch_shape=(1, IM_WIDTH, IM_HEIGHT, IM_CHANNELS))
         h = self.encoder(input_im)
         h = Reshape((1, self.v_size))(h)
-        h = self.lstm_replay(h)
+        h = self.gru_replay(h)
         output_recon = self.decoder(h)
         m = Model(input_im, output_recon, name='stepper')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
@@ -273,6 +274,31 @@ class HydraNet(object):
 
                 bar.set_postfix(**postfix)
 
+        tmp_unc_percepts = self.uncertain_percepts
+        self.uncertain_percepts = 0
+
+        if self.p_final is not None:
+            self.pred_ae.compile(optimizer=Adam(lr=self.lr_final), loss='mse')
+
+            current_p = self.p_final
+            print('Current p:', current_p)
+            bar = trange(self.final_batches)
+            for i in bar:
+                self.pred_loss_train.append(self.train_batch_pred_ae(train_getter, p=current_p))
+                smooth_loss = np.mean(self.pred_loss_train[-10:])
+                postfix['L train'] = smooth_loss
+
+                if i % TEST_EVERY_N_BATCHES == 0:
+                    self.pred_loss_test.append(self.train_batch_pred_ae(test_getter, p=current_p, test=True))
+                    smooth_loss = np.mean(self.pred_loss_test[-4:])
+                    postfix['L test'] = smooth_loss
+
+                bar.set_postfix(**postfix)
+
+            self.save_modules()
+
+        self.uncertain_percepts = tmp_unc_percepts
+
         if self.p_final is not None:
             self.pred_ae.compile(optimizer=Adam(lr=self.lr_final), loss='mse')
 
@@ -341,6 +367,7 @@ class HydraNet(object):
 
         labels = []
         labels.append(create_im_label('GT'))
+        labels.append(create_im_label('Ob'))
         labels.append(create_im_label('AE'))
         if use_stepper:
             labels.append(create_im_label('ST'))
@@ -360,6 +387,7 @@ class HydraNet(object):
         for t in range(EP_LEN - SERIES_SHIFT):
             images = []
             images.append(ep_images[0, t+SERIES_SHIFT, :, :, 0])
+            images.append(ep_images_masked[0, t+SERIES_SHIFT, :, :, 0])
             images.append(net_preds[0, t, :, :, 0])
             if use_stepper:
                 images.append(stepper_pred[t][0, :, :, 0])

@@ -38,8 +38,6 @@ IM_SHAPE = (IM_WIDTH, IM_HEIGHT, IM_CHANNELS)
 SERIES_SHIFT = 1
 EP_LEN = 100 - SERIES_SHIFT
 
-V_SIZE = 128
-
 BATCH_SIZE = 32
 TEST_EVERY_N_BATCHES = 10
 
@@ -55,7 +53,9 @@ DEFAULT_SCHEME = {
     'p_level_batches': 400,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
-    'final_batches': 4000,  # number of batches for final training
+    'final_batches': 1500,  # number of batches for final training
+    # 'v_size': 64, # sufficient for near no noise
+    'v_size': 128,  #
 }
 
 
@@ -74,34 +74,37 @@ class HydraNet(object):
         self.training_scheme = DEFAULT_SCHEME
         self.training_scheme.update(kwargs)
 
-        self.clear_training = self.training_scheme.get('clear_training')
-        self.clear_batches = self.training_scheme.get('clear_batches')
-        self.lr_initial = self.training_scheme.get('lr_initial')
-        self.guaranteed_percepts = self.training_scheme.get('guaranteed_percepts')
-        self.uncertain_percepts = self.training_scheme.get('uncertain_percepts')
-        self.p_levels = self.training_scheme.get('p_levels')
-        self.p_level_batches = self.training_scheme.get('p_level_batches')
-        self.p_final = self.training_scheme.get('p_final')
-        self.lr_final = self.training_scheme.get('lr_final')
-        self.final_batches = self.training_scheme.get('final_batches')
+        self.clear_training = self.training_scheme['clear_training']
+        self.clear_batches = self.training_scheme['clear_batches']
+        self.lr_initial = self.training_scheme['lr_initial']
+        self.guaranteed_percepts = self.training_scheme['guaranteed_percepts']
+        self.uncertain_percepts = self.training_scheme['uncertain_percepts']
+        self.p_levels = self.training_scheme['p_levels']
+        self.p_level_batches = self.training_scheme['p_level_batches']
+        self.p_final = self.training_scheme['p_final']
+        self.lr_final = self.training_scheme['lr_final']
+        self.final_batches = self.training_scheme['final_batches']
 
         # loss trackers
         self.pred_loss_train = []
         self.pred_loss_test = []
 
         # network configuration
-        self.v_size = kwargs.get('v_size', V_SIZE)
+        self.v_size = self.training_scheme['v_size']
 
         # modules of network
         self.encoder = None
         self.decoder = None
         self.state_pred_train = None
+        self.err_pred = None
+
 
         # special layers
         self.gru_replay = None
 
         # full networks
         self.pred_ae = None
+        self.pred_ae_state = None  # outputs also state
         self.stepper = None
 
         # build network
@@ -110,7 +113,7 @@ class HydraNet(object):
         self.build_heads()
 
         # gru_replay purposely skipped (weights are copied from gru_train)
-        self.modules = [self.encoder, self.decoder, self.state_pred_train]
+        self.modules = [self.encoder, self.decoder, self.state_pred_train, self.err_pred]
 
     def build_modules(self):
         # build encoder
@@ -141,8 +144,8 @@ class HydraNet(object):
 
         # gru for training
         input_vs = Input(shape=(EP_LEN - SERIES_SHIFT, self.v_size,))
-        # output_vs = LSTM(V_SIZE, return_sequences=True)(input_vs)
-        output_vs = GRU(V_SIZE, return_sequences=True)(input_vs)
+        # output_vs = LSTM(self.v_size, return_sequences=True)(input_vs)
+        output_vs = GRU(self.v_size, return_sequences=True)(input_vs)
 
         m = Model(input_vs, output_vs, name='state_pred_train')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
@@ -150,7 +153,19 @@ class HydraNet(object):
         self.state_pred_train = m
 
         # gru for replays
-        self.gru_replay = GRU(V_SIZE, stateful=True)
+        self.gru_replay = GRU(self.v_size, stateful=True)
+
+        # error pred
+        input_s = Input(shape=(self.v_size,))
+        h = Dense(10, activation='relu')(input_s)
+        err = Dense(1, activation='relu')(h)
+        m = Model(input_s, err, name='error_pred')
+        m.compile(optimizer='adam', loss='mse')
+        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
+        m.summary()
+        self.err_pred = m
+
+
 
         # TODO: aux variables: loss, position, velocity
         # TODO: generator (decoder with noise)
@@ -159,7 +174,10 @@ class HydraNet(object):
         for module in self.modules:
             fpath = '{}/{}-{}.hdf5'.format(folder, module.name, tag)
             print('Loading {} from {}'.format(module.name, fpath))
-            module.load_weights(fpath)
+            try:
+                module.load_weights(fpath)
+            except Exception:
+                print('Failed to load module {}'.format(module))
 
         self.gru_replay.set_weights(self.state_pred_train.get_weights())
 
@@ -191,6 +209,14 @@ class HydraNet(object):
         m.summary()
         m.compile(optimizer=Adam(lr=0.001), loss='mse')
         self.pred_ae = m
+
+        # build pae with state output
+        m = Model(input_ims, output=[h, output_preds], name='pred_ae_state')
+        draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
+        m.summary()
+        self.pred_ae_state = m
+
+
 
         # build replayer
         input_im = Input(batch_shape=(1, IM_WIDTH, IM_HEIGHT, IM_CHANNELS))
@@ -366,8 +392,8 @@ class HydraNet(object):
         col = np.zeros((HEADER_HEIGHT, 1))
 
         labels = []
-        labels.append(create_im_label('GT'))
         labels.append(create_im_label('Ob'))
+        labels.append(create_im_label('GT'))
         labels.append(create_im_label('AE'))
         if use_stepper:
             labels.append(create_im_label('ST'))
@@ -386,8 +412,8 @@ class HydraNet(object):
         frames = []
         for t in range(EP_LEN - SERIES_SHIFT):
             images = []
-            images.append(ep_images[0, t+SERIES_SHIFT, :, :, 0])
             images.append(ep_images_masked[0, t+SERIES_SHIFT, :, :, 0])
+            images.append(ep_images[0, t+SERIES_SHIFT, :, :, 0])
             images.append(net_preds[0, t, :, :, 0])
             if use_stepper:
                 images.append(stepper_pred[t][0, :, :, 0])
@@ -423,6 +449,6 @@ if __name__ == '__main__':
     # hydra.load_modules()
     hydra.execute_scheme(train_box.get_batch_episodes, test_box.get_batch_episodes)
     hydra.plot_losses()
-    hydra.draw_pred_gif(test_box.get_batch_episodes, use_stepper=True)
+    hydra.draw_pred_gif(test_box.get_n_random_episodes_full, use_stepper=True)
 
 

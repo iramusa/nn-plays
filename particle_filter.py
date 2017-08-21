@@ -5,7 +5,7 @@ import random
 import copy
 
 import balls_sim
-from balls_sim import default_config, WORLD_LEN
+from balls_sim import DEFAULT_CONFIG, WORLD_LEN
 
 
 def norm_pdf(x):
@@ -16,8 +16,8 @@ def norm_pdf(x):
 
 
 class ParticleFilter(object):
-    def __init__(self, sim_config=default_config, n_particles=10000):
-        self.sim_config = default_config
+    def __init__(self, sim_config=DEFAULT_CONFIG, n_particles=10000):
+        self.sim_config = DEFAULT_CONFIG
         self.sim_config.update(sim_config)
         self.n = n_particles
         self.parts = []

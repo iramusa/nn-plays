@@ -6,7 +6,7 @@ WORLD_LEN = 28
 WORLD_SIZE = np.array((WORLD_LEN, WORLD_LEN))
 V_STD = 0.8
 
-default_config = {
+DEFAULT_CONFIG = {
     'n_bodies': 1,
     'radius_mode': 'uniform',
     'radius': 3.5,

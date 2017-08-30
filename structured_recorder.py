@@ -13,19 +13,19 @@ simulation_config = {
     'radius': 3.5,
     'mass_mode': 'uniform',
     'mass': 1.0,
-    'wall_action': 'pass',
+    'wall_action': 'bounce',
     'ball_action': 'pass',
     'measurement_noise': 0.0,
     'dynamics_noise': 0.001,
 }
 
 record_config = {
-    'sim_type': 'balls',
+    'sim_type': 'bounce',
     'sim_config': simulation_config,
-    # 'train': 'train',
-    'train': 'valid',
-    'n_episodes': 500,
-    # 'n_episodes': 1000,
+    'train': 'train',
+    # 'train': 'valid',
+    # 'n_episodes': 500,
+    'n_episodes': 1000,
     'episode_length': 100,
     'folder': 'data-balls/',
     'random_seed': 0

@@ -440,15 +440,20 @@ class HydraNet(object):
 
 
 if __name__ == '__main__':
-    train_box = DataContainer('data-balls/balls-train.pt', batch_size=32, ep_len_read=EP_LEN)
-    test_box = DataContainer('data-balls/balls-valid.pt', batch_size=32, ep_len_read=EP_LEN)
+    # train_box = DataContainer('data-balls/pass-train.pt', batch_size=32, ep_len_read=EP_LEN)
+    # test_box = DataContainer('data-balls/pass-valid.pt', batch_size=32, ep_len_read=EP_LEN)
+    # train_box = DataContainer('data-balls/mixed-train.pt', batch_size=32, ep_len_read=EP_LEN)
+    # test_box = DataContainer('data-balls/mixed-valid.pt', batch_size=32, ep_len_read=EP_LEN)
+    train_box = DataContainer('data-balls/bounce-train.pt', batch_size=32, ep_len_read=EP_LEN)
+    test_box = DataContainer('data-balls/bounce-valid.pt', batch_size=32, ep_len_read=EP_LEN)
     train_box.populate_images()
     test_box.populate_images()
 
     hydra = HydraNet()
     # hydra.load_modules()
+    hydra.load_modules(tag='base')
     hydra.execute_scheme(train_box.get_batch_episodes, test_box.get_batch_episodes)
     hydra.plot_losses()
-    hydra.draw_pred_gif(test_box.get_n_random_episodes_full, use_stepper=True)
+    hydra.draw_pred_gif(test_box.get_n_random_episodes_full, use_stepper=False, use_pf=False)
 
 

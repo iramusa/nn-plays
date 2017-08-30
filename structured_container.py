@@ -31,6 +31,7 @@ class DataContainer(object):
         self.ep_len_read = ep_len
 
     def load_record(self, file):
+        print("Loading {}".format(file))
         self.record = torch.load(file)
         self.n_episodes = self.record['n_episodes']
         self.sim_config = self.record['sim_config']

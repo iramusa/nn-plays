@@ -5,6 +5,7 @@ import numpy as np
 WORLD_LEN = 28
 WORLD_SIZE = np.array((WORLD_LEN, WORLD_LEN))
 V_STD = 0.8
+P_BOUNCE = 0.5
 
 DEFAULT_CONFIG = {
     'n_bodies': 1,
@@ -26,6 +27,9 @@ class Body(object):
         self.vel = vel
         self.r = r
         self.m = m
+        self.bounce = np.random.rand() > P_BOUNCE
+
+        self.in_transition = False
 
     def update(self, dt=1.0):
         self.pos += dt * self.vel
@@ -150,6 +154,14 @@ class World(object):
                 below_lim = (b1.pos - b1.r) < 0
                 b1.vel[above_lim] = -np.abs(b1.vel[above_lim])
                 b1.vel[below_lim] = np.abs(b1.vel[below_lim])
+            elif self.wall_action == 'mixed':
+                if b1.bounce:
+                    above_lim = (b1.pos + b1.r) > WORLD_LEN
+                    below_lim = (b1.pos - b1.r) < 0
+                    b1.vel[above_lim] = -np.abs(b1.vel[above_lim])
+                    b1.vel[below_lim] = np.abs(b1.vel[below_lim])
+                else:
+                    b1.pos %= WORLD_LEN
             else:
                 raise ValueError('Bad wall_action', self.wall_action)
 

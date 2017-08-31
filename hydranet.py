@@ -355,10 +355,13 @@ class HydraNet(object):
         plt.plot(self.pred_loss_train)
         batches = np.arange(len(self.pred_loss_test)) * TEST_EVERY_N_BATCHES
         plt.plot(batches, self.pred_loss_test)
+        baseline = np.ones(len(self.pred_loss_test)) * 0.0374
+        plt.plot(batches, baseline)
         plt.title('Loss')
         plt.ylabel('loss')
+        plt.ylim(ymax=1.2*0.0374)
         plt.xlabel('updates')
-        plt.legend(['train', 'test'])
+        plt.legend(['train', 'valid', 'baseline'])
         fpath = '{}/loss-{}.png'.format(folder_plots, tag)
         plt.savefig(fpath)
 

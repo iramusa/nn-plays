@@ -79,10 +79,12 @@ class Record(object):
 
             self.all_eps.append(ep_dict)
 
-    def write(self):
+    def write(self, filepath=None):
+        if filepath is None:
+            filepath = self.filepath
         # data = np.array(self.ep_list)
-        print('Writing', self.filepath)
-        torch.save(self.record, open(self.filepath, 'wb'))
+        print('Writing', filepath)
+        torch.save(self.record, open(filepath, 'wb'))
 
 
 if __name__ == '__main__':

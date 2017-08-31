@@ -7,7 +7,7 @@ WORLD_SIZE = np.array((WORLD_LEN, WORLD_LEN))
 V_STD = 0.8
 P_BOUNCE = 0.5
 
-DEFAULT_CONFIG = {
+DEFAULT_SIM_CONFIG = {
     'n_bodies': 1,
     'radius_mode': 'uniform',
     'radius': 3.5,

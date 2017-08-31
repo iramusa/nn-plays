@@ -41,7 +41,7 @@ EP_LEN = 100 - SERIES_SHIFT
 BATCH_SIZE = 32
 TEST_EVERY_N_BATCHES = 10
 
-DEFAULT_SCHEME = {
+DEFAULT_TRAIN_SCHEME = {
     'clear_training': True,  # run training on clear episodes (non-masked percepts)
     # 'clear_training': False,  # run training on clear episodes (non-masked percepts)
     'clear_batches': 500,  # how many batches?
@@ -71,7 +71,7 @@ def create_im_label(label):
 class HydraNet(object):
     def __init__(self, **kwargs):
         # training configuration
-        self.training_scheme = DEFAULT_SCHEME
+        self.training_scheme = DEFAULT_TRAIN_SCHEME
         self.training_scheme.update(kwargs)
 
         self.clear_training = self.training_scheme['clear_training']

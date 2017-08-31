@@ -3,7 +3,6 @@
 import os
 import datetime
 
-import pandas as pd
 import numpy as np
 
 from structured_recorder import Record
@@ -11,20 +10,17 @@ from structured_container import DataContainer
 from balls_sim import DEFAULT_SIM_CONFIG
 from hydranet import HydraNet
 
-FOLDER_EXPS = 'experiments'
-# FOLDER_DIAGRAMS = 'diagrams'
-# FOLDER_MODELS = 'models'
-# FOLDER_PLOTS = 'plots'
+import pandas as pd  # leads to error in combo with hydranet if imported earlier
 
+FOLDER_EXPS = 'experiments'
 
 BATCH_SIZE = 32
 SERIES_SHIFT = 1
 EP_LEN = 100 - SERIES_SHIFT
 
 
-DEFAULT_TRAIN_SCHEME = {
-    # 'clear_training': True,  # run training on clear episodes (non-masked percepts)
-    'clear_training': False,  # run training on clear episodes (non-masked percepts)
+train_scheme = {
+    'clear_training': True,  # run training on clear episodes (non-masked percepts)
     # 'clear_training': False,  # run training on clear episodes (non-masked percepts)
     'clear_batches': 500,  # how many batches?
     'lr_initial': 0.001,
@@ -32,10 +28,10 @@ DEFAULT_TRAIN_SCHEME = {
     'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
     'p_levels': np.sqrt(np.linspace(0.05, 0.99, 10)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
-    'p_level_batches': 1,  # how many batches per level
+    'p_level_batches': 400,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
-    'final_batches': 1,  # number of batches for final training
+    'final_batches': 1500,  # number of batches for final training
     # 'v_size': 64, # sufficient for near no noise
     'v_size': 128,  #
 }
@@ -77,7 +73,7 @@ class Experiment(object):
     def __init__(self, ctrl_var, var_vals, exp_name):
         self.date = datetime.datetime.now().strftime('%y-%m-%d_%H:%M')
         self.sim_conf = DEFAULT_SIM_CONFIG
-        self.train_scheme = DEFAULT_TRAIN_SCHEME
+        self.train_scheme = train_scheme
 
         self.train_config = train_config
         self.valid_config = valid_config
@@ -116,11 +112,13 @@ class Experiment(object):
         for i, val in enumerate(self.var_vals):
             self.run_single(val, i)
 
-        pd.DataFrame({
+        results = pd.DataFrame({
             self.ctrl_var: self.x,
             'train_error': self.train_errors,
             'valid_error': self.valid_errors
         })
+        fpath = '{}/errors.csv'.format(self.folder_numerical)
+        results.to_csv(fpath)
 
     def run_single(self, val, i):
         print('Setting {} to {}'.format(ctrl_var, val))

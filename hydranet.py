@@ -350,6 +350,7 @@ class HydraNet(object):
             print('Not enough loss measurements to plot')
             return
 
+        plt.clf()
         plt.plot(self.pred_loss_train)
         batches = np.arange(len(self.pred_loss_test)) * TEST_EVERY_N_BATCHES
         plt.plot(batches, self.pred_loss_test)

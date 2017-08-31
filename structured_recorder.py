@@ -53,7 +53,7 @@ class Record(object):
         sim_config = self.record['sim_config']
 
         for i_ep in range(self.n_episodes):
-            print(i_ep)
+            # print(i_ep)
             ep_dict = {}
             t_list = []
             ep_dict.update({'t_list': t_list})

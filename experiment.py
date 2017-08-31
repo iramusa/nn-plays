@@ -183,7 +183,7 @@ class Experiment(object):
 if __name__ == '__main__':
     exp_name = 'bases'
     ctrl_var = 'v_size'
-    var_vals = [8, 16, 32, 64, 128, 256, 512]
+    var_vals = [16, 32, 64, 128, 256, 512]
 
     exp = Experiment(ctrl_var, var_vals, exp_name)
     exp.run()

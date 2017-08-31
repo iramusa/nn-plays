@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import PIL
 import numpy as np
 import time
+import copy
 import imageio
 from tqdm import tqdm, trange
 
@@ -79,7 +80,7 @@ class HydraNet(object):
         self.lr_initial = self.training_scheme['lr_initial']
         self.guaranteed_percepts = self.training_scheme['guaranteed_percepts']
         self.uncertain_percepts = self.training_scheme['uncertain_percepts']
-        self.p_levels = self.training_scheme['p_levels']
+        self.p_levels = copy.deepcopy(self.training_scheme['p_levels'])
         self.p_level_batches = self.training_scheme['p_level_batches']
         self.p_final = self.training_scheme['p_final']
         self.lr_final = self.training_scheme['lr_final']

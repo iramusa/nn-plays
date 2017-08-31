@@ -216,8 +216,6 @@ class HydraNet(object):
         m.summary()
         self.pred_ae_state = m
 
-
-
         # build replayer
         input_im = Input(batch_shape=(1, IM_WIDTH, IM_HEIGHT, IM_CHANNELS))
         h = self.encoder(input_im)
@@ -281,7 +279,7 @@ class HydraNet(object):
 
                 bar.set_postfix(**postfix)
 
-            self.save_modules()
+            # self.save_modules()
 
         while len(self.p_levels) > 0:
             current_p = self.p_levels.pop(0)
@@ -321,7 +319,7 @@ class HydraNet(object):
 
                 bar.set_postfix(**postfix)
 
-            self.save_modules()
+            # self.save_modules()
 
         self.uncertain_percepts = tmp_unc_percepts
 
@@ -343,11 +341,15 @@ class HydraNet(object):
 
                 bar.set_postfix(**postfix)
 
-            self.save_modules()
+            # self.save_modules()
 
 # ------------------------- DISPLAYING --------------------------------
 
-    def plot_losses(self, tag=0):
+    def plot_losses(self, folder_plots=FOLDER_PLOTS, tag=0):
+        if len(self.pred_loss_test) < 1:
+            print('Not enough loss measurements to plot')
+            return
+
         plt.plot(self.pred_loss_train)
         batches = np.arange(len(self.pred_loss_test)) * TEST_EVERY_N_BATCHES
         plt.plot(batches, self.pred_loss_test)
@@ -355,10 +357,10 @@ class HydraNet(object):
         plt.ylabel('loss')
         plt.xlabel('updates')
         plt.legend(['train', 'test'])
-        fpath = '{}/loss-{}.png'.format(FOLDER_PLOTS, tag)
+        fpath = '{}/loss-{}.png'.format(folder_plots, tag)
         plt.savefig(fpath)
 
-    def draw_pred_gif(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False, tag=0):
+    def draw_pred_gif(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False, folder_plots=FOLDER_PLOTS, tag=0):
         ep_images, poses = full_getter()
         ep_images = ep_images[0, ...].reshape((1,) + ep_images.shape[1:])
         ep_images_masked, removed_percepts = self.mask_percepts(ep_images, p, return_indices=True)
@@ -435,7 +437,7 @@ class HydraNet(object):
 
             frames.append(frame)
 
-        fpath = '{}/predictions-{}.gif'.format(FOLDER_PLOTS, tag)
+        fpath = '{}/predictions-{}.gif'.format(folder_plots, tag)
         imageio.mimsave(fpath, frames)
 
 

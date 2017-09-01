@@ -392,7 +392,8 @@ class HydraNet(object):
         fpath = '{}/loss-{}.png'.format(folder_plots, tag)
         plt.savefig(fpath)
 
-    def draw_pred_gif(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False, folder_plots=FOLDER_PLOTS, tag=0):
+    def draw_pred_gif(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False,
+                      folder_plots=FOLDER_PLOTS, tag=0, normalize=False):
         ep_images, poses = full_getter()
         ep_images = ep_images[0, ...].reshape((1,) + ep_images.shape[1:])
         ep_images_masked, removed_percepts = self.mask_percepts(ep_images, p, return_indices=True)
@@ -448,11 +449,17 @@ class HydraNet(object):
             images = []
             images.append(ep_images_masked[0, t+SERIES_SHIFT, :, :, 0])
             images.append(ep_images[0, t+SERIES_SHIFT, :, :, 0])
+            if normalize:
+                net_preds[0, t, :, :, 0] /= np.max(net_preds[0, t, :, :, 0])
             images.append(net_preds[0, t, :, :, 0])
             if use_stepper:
+                if normalize:
+                    stepper_pred[t][0, :, :, 0] /= np.max(stepper_pred[t][0, :, :, 0])
                 images.append(stepper_pred[t][0, :, :, 0])
 
             if use_pf:
+                if normalize:
+                    pf_pred[t][:, :, 0] /= np.max(pf_pred[t][:, :, 0])
                 images.append(pf_pred[t][:, :, 0])
 
             table = [col]

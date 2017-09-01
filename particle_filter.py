@@ -16,9 +16,10 @@ def norm_pdf(x):
 
 
 class ParticleFilter(object):
-    def __init__(self, sim_config=DEFAULT_SIM_CONFIG, n_particles=10000):
+    def __init__(self, sim_config=DEFAULT_SIM_CONFIG, n_particles=10000, nice_start=False):
         self.sim_config = DEFAULT_SIM_CONFIG
         self.sim_config.update(sim_config)
+        self.nice_start = nice_start
         self.n = n_particles
         self.parts = []
 
@@ -49,15 +50,20 @@ class ParticleFilter(object):
             part.run()
 
     def update(self, measurement):
-        for i, part in enumerate(self.parts):
-            if self.n_targets == 1:
+        if self.n_targets !=1:
+            raise ValueError('Wrong number of targets')
+
+        if self.nice_start:
+            self.nice_start = False
+            for i, part in enumerate(self.parts):
+                part.bodies[0].pos = measurement + np.random.normal(0, self.measurement_noise, 2)
+        else:
+            for i, part in enumerate(self.parts):
                 # circular noise, do rectangular?
                 dist = np.linalg.norm(measurement - part.bodies[0].pos)
                 self.w[i] *= norm_pdf(dist/self.measurement_noise)
-            else:
-                raise ValueError('Wrong number of targets')
 
-        self.w /= np.sum(self.w)
+            self.w /= np.sum(self.w)
 
     def resample(self):
         indices = np.array(range(self.n))

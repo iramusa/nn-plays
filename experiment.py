@@ -161,14 +161,14 @@ class Experiment(object):
         rec.run()
         fpath_train = '{}/train.pt'.format(self.folder_data)
         rec.write(fpath_train)
-        self.train_box = DataContainer(fpath_train, batch_size=32, ep_len_read=EP_LEN)
+        self.train_box = DataContainer(fpath_train, batch_size=BATCH_SIZE, ep_len_read=EP_LEN)
         self.train_box.populate_images()
 
         rec = Record(**self.valid_config)
         rec.run()
         fpath_valid = '{}/test.pt'.format(self.folder_data)
         rec.write(fpath_valid)
-        self.valid_box = DataContainer(fpath_valid, batch_size=32, ep_len_read=EP_LEN)
+        self.valid_box = DataContainer(fpath_valid, batch_size=BATCH_SIZE, ep_len_read=EP_LEN)
         self.valid_box.populate_images()
 
 

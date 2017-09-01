@@ -154,6 +154,27 @@ class World(object):
                 below_lim = (b1.pos - b1.r) < 0
                 b1.vel[above_lim] = -np.abs(b1.vel[above_lim])
                 b1.vel[below_lim] = np.abs(b1.vel[below_lim])
+            elif self.wall_action == 'random':
+                above_lim = (b1.pos + b1.r) > WORLD_LEN
+                below_lim = (b1.pos - b1.r) < 0
+                over_edge = np.any(np.logical_or(above_lim, below_lim))
+
+                if over_edge and not b1.in_transition:
+                    # decide whether to bounce or pass
+                    if np.random.rand() < P_BOUNCE:
+                        # bounce
+                        b1.vel[above_lim] = -np.abs(b1.vel[above_lim])
+                        b1.vel[below_lim] = np.abs(b1.vel[below_lim])
+                    else:
+                        b1.in_transition = True
+
+                elif over_edge and b1.in_transition:
+                    # continue transitioning
+                    b1.pos %= WORLD_LEN
+                elif not over_edge and b1.in_transition:
+                    # finish transitioning
+                    b1.in_transition = False
+                    b1.pos %= WORLD_LEN
             elif self.wall_action == 'mixed':
                 if b1.bounce:
                     above_lim = (b1.pos + b1.r) > WORLD_LEN

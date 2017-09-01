@@ -71,6 +71,8 @@ def create_im_label(label):
 
 class HydraNet(object):
     def __init__(self, **kwargs):
+        self.verbose = False
+
         # training configuration
         self.training_scheme = DEFAULT_TRAIN_SCHEME
         self.training_scheme.update(kwargs)
@@ -126,7 +128,8 @@ class HydraNet(object):
 
         m = Model(input_im, v, name='encoder')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
-        m.summary()
+        if self.verbose:
+            m.summary()
         self.encoder = m
 
         # build decoder
@@ -140,7 +143,8 @@ class HydraNet(object):
 
         m = Model(input_v, output_im, name='decoder')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
-        m.summary()
+        if self.verbose:
+            m.summary()
         self.decoder = m
 
         # gru for training
@@ -150,7 +154,8 @@ class HydraNet(object):
 
         m = Model(input_vs, output_vs, name='state_pred_train')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
-        m.summary()
+        if self.verbose:
+            m.summary()
         self.state_pred_train = m
 
         # gru for replays
@@ -163,7 +168,8 @@ class HydraNet(object):
         m = Model(input_s, err, name='error_pred')
         m.compile(optimizer='adam', loss='mse')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
-        m.summary()
+        if self.verbose:
+            m.summary()
         self.err_pred = m
 
 
@@ -207,14 +213,16 @@ class HydraNet(object):
         output_preds = td2(h)
         m = Model(input_ims, output_preds, name='pred_ae_train')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
-        m.summary()
+        if self.verbose:
+            m.summary()
         m.compile(optimizer=Adam(lr=0.001), loss='mse')
         self.pred_ae = m
 
         # build pae with state output
         m = Model(input_ims, output=[h, output_preds], name='pred_ae_state')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
-        m.summary()
+        if self.verbose:
+            m.summary()
         self.pred_ae_state = m
 
         # build replayer
@@ -225,7 +233,8 @@ class HydraNet(object):
         output_recon = self.decoder(h)
         m = Model(input_im, output_recon, name='stepper')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
-        m.summary()
+        if self.verbose:
+            m.summary()
         self.stepper = m
 
 # --------------------- TRAINING -------------------------------
@@ -347,21 +356,30 @@ class HydraNet(object):
 # ------------------------- DISPLAYING --------------------------------
 
     def plot_losses(self, folder_plots=FOLDER_PLOTS, tag=0):
+        plt.clf()
+
         if len(self.pred_loss_test) < 1:
             print('Not enough loss measurements to plot')
-            return
+        else:
+            plt.plot(self.pred_loss_train)
+            batches = np.arange(len(self.pred_loss_test)) * TEST_EVERY_N_BATCHES
+            plt.plot(batches, self.pred_loss_test)
+            baseline = np.ones(len(self.pred_loss_test)) * 0.0374
+            plt.plot(batches, baseline, '--')
 
-        plt.clf()
-        plt.plot(self.pred_loss_train)
-        batches = np.arange(len(self.pred_loss_test)) * TEST_EVERY_N_BATCHES
-        plt.plot(batches, self.pred_loss_test)
-        baseline = np.ones(len(self.pred_loss_test)) * 0.0374
-        plt.plot(batches, baseline)
+        stages = [self.clear_batches]
+        for p_level in self.training_scheme['p_levels']:
+            stages.append(self.p_level_batches)
+        stages.append(self.final_batches)
+        stages.append(self.final_batches)
+        stages = np.cumsum(np.array(stages))
+        plt.plot(stages, np.ones(len(stages)) * 0.0374, 'd')
+
         plt.title('Loss')
         plt.ylabel('loss')
         plt.ylim(ymax=1.2*0.0374)
         plt.xlabel('updates')
-        plt.legend(['train', 'valid', 'baseline'])
+        plt.legend(['train', 'valid', 'baseline', 'stages'])
         fpath = '{}/loss-{}.png'.format(folder_plots, tag)
         plt.savefig(fpath)
 

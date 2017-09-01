@@ -4,6 +4,7 @@ import os
 import datetime
 
 import numpy as np
+import copy
 
 from structured_recorder import Record
 from structured_container import DataContainer
@@ -42,7 +43,7 @@ sim_config = {
     'radius': 3.5,
     'mass_mode': 'uniform',
     'mass': 1.0,
-    'wall_action': 'pass',
+    'wall_action': 'mixed',
     'ball_action': 'pass',
     'measurement_noise': 0.0,
     'dynamics_noise': 0.000000001,
@@ -58,15 +59,10 @@ train_config = {
     'random_seed': 0
 }
 
-valid_config = {
-    'sim_type': 'easy',
-    'sim_config': sim_config,
-    'train': 'valid',
-    'n_episodes': 500,
-    'episode_length': 100,
-    'folder': 'data-balls/',
-    'random_seed': 0
-}
+valid_config = copy.deepcopy(train_config)
+valid_config['sim_config'] = sim_config
+valid_config['n_episodes'] = 500
+valid_config['train'] = 'valid'
 
 
 class Experiment(object):
@@ -144,9 +140,10 @@ class Experiment(object):
         print('Starting training')
 
         self.net.execute_scheme(self.train_box.get_batch_episodes, self.valid_box.get_batch_episodes)
-        self.net.save_modules(self.folder_modules, tag='base-{}'.format(v_size))
-        self.net.draw_pred_gif(self.valid_box.get_n_random_episodes_full, p=1.0, use_stepper=False, use_pf=False,
-                               folder_plots=self.folder_gifs, tag=val)
+        self.net.save_modules(self.folder_modules, tag='{}'.format(v_size))
+        for j in range(3):
+            self.net.draw_pred_gif(self.valid_box.get_n_random_episodes_full, p=1.0, use_stepper=False, use_pf=False,
+                                   folder_plots=self.folder_gifs, tag='{}-{}'.format(val, j))
         self.net.plot_losses(folder_plots=self.folder_plots, tag=val)
 
         # get numericals
@@ -181,9 +178,9 @@ class Experiment(object):
 
 
 if __name__ == '__main__':
-    exp_name = 'bases'
+    exp_name = 'bounce_mix'
     ctrl_var = 'v_size'
-    var_vals = [16, 32, 64, 128, 256, 512]
+    var_vals = [8, 16, 32, 64, 128, 256, 512]
 
     exp = Experiment(ctrl_var, var_vals, exp_name)
     exp.run()

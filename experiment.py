@@ -16,19 +16,17 @@ import pandas as pd  # leads to error in combo with hydranet if imported earlier
 FOLDER_EXPS = 'experiments'
 
 train_scheme = {
-    'clear_training': True,  # run training on clear episodes (non-masked percepts)
-    # 'clear_training': False,  # run training on clear episodes (non-masked percepts)
-    'clear_batches': 500,  # how many batches?
+    'clear_batches': 0,  # how many batches?
     'lr_initial': 0.001,
     'guaranteed_percepts': 5,  # how many first percepts are guaranteed to be non-masked?
     'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
-    'p_levels': np.sqrt(np.linspace(0.05, 0.99**2, 10)).tolist(),  # progressing probabilities of masking percepts
+    'p_levels': np.sqrt(np.linspace(0.05, 0.99 ** 2, 10)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
     'p_level_batches': 400,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
-    'final_batches': 1500,  # number of batches for final training
-    'until_convergence': True,
+    'final_batches': 1000,  # number of batches for final training
+    'max_until_convergence': 9999,
     # 'v_size': 64, # sufficient for near no noise
     'v_size': 128,  #
 }
@@ -46,11 +44,11 @@ sim_config = {
 }
 
 train_config = {
-    'sim_type': 'easy',
+    'sim_type': 'long',
     'sim_config': sim_config,
     'train': 'train',
     'n_episodes': 1000,
-    'episode_length': 100,
+    'episode_length': 201,
     'folder': 'data-balls/',
     'random_seed': 0
 }

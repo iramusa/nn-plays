@@ -36,28 +36,25 @@ IM_HEIGHT = 28
 IM_CHANNELS = 1
 IM_SHAPE = (IM_WIDTH, IM_HEIGHT, IM_CHANNELS)
 
-SERIES_SHIFT = 1
-EP_LEN = 100 - SERIES_SHIFT
+SERIES_SHIFT = 0
+EP_LEN = 200 - SERIES_SHIFT
 
 BATCH_SIZE = 32
 TEST_EVERY_N_BATCHES = 10
-MAX_UPDATES_UNTIL_CONVERGENCE = 9999
 CONVERGENCE_AFTER_NO_IMPROVEMENT_UPDATES = 200
 
 DEFAULT_TRAIN_SCHEME = {
-    # 'clear_training': True,  # run training on clear episodes (non-masked percepts)
-    # 'clear_training': False,  # run training on clear episodes (non-masked percepts)
-    'clear_batches': 500,  # how many batches?
+    'clear_batches': 0,  # how many batches?
     'lr_initial': 0.001,
     'guaranteed_percepts': 5,  # how many first percepts are guaranteed to be non-masked?
     'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
-    'p_levels': np.sqrt(np.linspace(0.05, 0.99, 10)).tolist(),  # progressing probabilities of masking percepts
+    'p_levels': np.sqrt(np.linspace(0.05, 0.99**2, 10)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
     'p_level_batches': 400,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
     'final_batches': 1000,  # number of batches for final training
-    'until_convergence': True,
+    'max_until_convergence': 9999,
     # 'v_size': 64, # sufficient for near no noise
     'v_size': 128,  #
 }
@@ -80,7 +77,6 @@ class HydraNet(object):
         self.training_scheme = DEFAULT_TRAIN_SCHEME
         self.training_scheme.update(kwargs)
 
-        # self.clear_training = self.training_scheme['clear_training']
         self.clear_batches = self.training_scheme['clear_batches']
         self.lr_initial = self.training_scheme['lr_initial']
         self.guaranteed_percepts = self.training_scheme['guaranteed_percepts']
@@ -90,7 +86,7 @@ class HydraNet(object):
         self.p_final = self.training_scheme['p_final']
         self.lr_final = self.training_scheme['lr_final']
         self.final_batches = self.training_scheme['final_batches']
-        self.until_convergence = self.training_scheme['until_convergence']
+        self.max_until_convergence = self.training_scheme['until_convergence']
 
         # loss trackers
         self.pred_loss_train = []
@@ -104,7 +100,6 @@ class HydraNet(object):
         self.decoder = None
         self.state_pred_train = None
         self.err_pred = None
-
 
         # special layers
         self.gru_replay = None
@@ -266,10 +261,12 @@ class HydraNet(object):
             images_masked = images
 
         if test:
-            loss = self.pred_ae.test_on_batch(images_masked[:, 0:-SERIES_SHIFT, ...],
+            # loss = self.pred_ae.test_on_batch(images_masked[:, 0:-SERIES_SHIFT, ...],
+            loss = self.pred_ae.test_on_batch(images_masked[:, :, ...],
                                               images[:, SERIES_SHIFT:, ...])
         else:
-            loss = self.pred_ae.train_on_batch(images_masked[:, 0:-SERIES_SHIFT, ...],
+            # loss = self.pred_ae.train_on_batch(images_masked[:, 0:-SERIES_SHIFT, ...],
+            loss = self.pred_ae.train_on_batch(images_masked[:, :, ...],
                                                images[:, SERIES_SHIFT:, ...])
         return loss
 
@@ -335,12 +332,12 @@ class HydraNet(object):
 
         self.uncertain_percepts = tmp_unc_percepts
 
-        if self.until_convergence is not None:
+        if self.max_until_convergence > 0:
             self.pred_ae.compile(optimizer=Adam(lr=self.lr_final), loss='mse')
 
             current_p = self.p_final
             print('Current p:', current_p)
-            bar = trange(MAX_UPDATES_UNTIL_CONVERGENCE)
+            bar = trange(self.max_until_convergence)
             lowest_valid_loss = np.inf
             convergence_counter = 0
             for i in bar:
@@ -358,10 +355,11 @@ class HydraNet(object):
                         convergence_counter = 0
 
                     if convergence_counter > CONVERGENCE_AFTER_NO_IMPROVEMENT_UPDATES:
-                        print("Training converged.")
+                        print('Training converged.')
                         break
 
                 bar.set_postfix(**postfix)
+            print('Finished before reaching convergence')
 
 # ------------------------- DISPLAYING --------------------------------
 
@@ -397,7 +395,8 @@ class HydraNet(object):
         ep_images, poses = full_getter()
         ep_images = ep_images[0, ...].reshape((1,) + ep_images.shape[1:])
         ep_images_masked, removed_percepts = self.mask_percepts(ep_images, p, return_indices=True)
-        net_preds = self.pred_ae.predict(ep_images_masked[:, 0:-SERIES_SHIFT, ...])
+        # net_preds = self.pred_ae.predict(ep_images_masked[:, 0:-SERIES_SHIFT, ...])
+        net_preds = self.pred_ae.predict(ep_images_masked[:, :, ...])
 
         # stepper predictions
         stepper_pred = []
@@ -409,7 +408,7 @@ class HydraNet(object):
 
         pf_pred = []
         if use_pf:
-            pf = ParticleFilter(sim_config, n_particles=5000)
+            pf = ParticleFilter(sim_config, n_particles=5000, nice_start=True)
             for t in range(EP_LEN-SERIES_SHIFT):
                 if not removed_percepts[t]:
                     pose = poses[0, t, 0, :]

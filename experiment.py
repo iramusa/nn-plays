@@ -22,12 +22,13 @@ train_scheme = {
     'lr_initial': 0.001,
     'guaranteed_percepts': 5,  # how many first percepts are guaranteed to be non-masked?
     'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
-    'p_levels': np.sqrt(np.linspace(0.05, 0.99, 10)).tolist(),  # progressing probabilities of masking percepts
+    'p_levels': np.sqrt(np.linspace(0.05, 0.99**2, 10)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
     'p_level_batches': 400,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
     'final_batches': 1500,  # number of batches for final training
+    'until_convergence': True,
     # 'v_size': 64, # sufficient for near no noise
     'v_size': 128,  #
 }

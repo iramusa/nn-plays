@@ -41,9 +41,11 @@ EP_LEN = 100 - SERIES_SHIFT
 
 BATCH_SIZE = 32
 TEST_EVERY_N_BATCHES = 10
+MAX_UPDATES_UNTIL_CONVERGENCE = 9999
+CONVERGENCE_AFTER_NO_IMPROVEMENT_UPDATES = 200
 
 DEFAULT_TRAIN_SCHEME = {
-    'clear_training': True,  # run training on clear episodes (non-masked percepts)
+    # 'clear_training': True,  # run training on clear episodes (non-masked percepts)
     # 'clear_training': False,  # run training on clear episodes (non-masked percepts)
     'clear_batches': 500,  # how many batches?
     'lr_initial': 0.001,
@@ -54,7 +56,8 @@ DEFAULT_TRAIN_SCHEME = {
     'p_level_batches': 400,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
-    'final_batches': 1500,  # number of batches for final training
+    'final_batches': 1000,  # number of batches for final training
+    'until_convergence': True,
     # 'v_size': 64, # sufficient for near no noise
     'v_size': 128,  #
 }
@@ -77,7 +80,7 @@ class HydraNet(object):
         self.training_scheme = DEFAULT_TRAIN_SCHEME
         self.training_scheme.update(kwargs)
 
-        self.clear_training = self.training_scheme['clear_training']
+        # self.clear_training = self.training_scheme['clear_training']
         self.clear_batches = self.training_scheme['clear_batches']
         self.lr_initial = self.training_scheme['lr_initial']
         self.guaranteed_percepts = self.training_scheme['guaranteed_percepts']
@@ -87,6 +90,7 @@ class HydraNet(object):
         self.p_final = self.training_scheme['p_final']
         self.lr_final = self.training_scheme['lr_final']
         self.final_batches = self.training_scheme['final_batches']
+        self.until_convergence = self.training_scheme['until_convergence']
 
         # loss trackers
         self.pred_loss_train = []
@@ -273,7 +277,7 @@ class HydraNet(object):
         self.pred_ae.compile(optimizer=Adam(lr=self.lr_initial), loss='mse')
 
         postfix = {}
-        if self.clear_training:
+        if self.clear_batches > 0:
             current_p = 0.0
             print('Current p:', current_p)
             bar = trange(self.clear_batches)
@@ -311,7 +315,7 @@ class HydraNet(object):
         tmp_unc_percepts = self.uncertain_percepts
         self.uncertain_percepts = 0
 
-        if self.p_final is not None:
+        if self.final_batches > 0:
             self.pred_ae.compile(optimizer=Adam(lr=self.lr_final), loss='mse')
 
             current_p = self.p_final
@@ -328,30 +332,36 @@ class HydraNet(object):
                     postfix['L test'] = smooth_loss
 
                 bar.set_postfix(**postfix)
-
-            # self.save_modules()
 
         self.uncertain_percepts = tmp_unc_percepts
 
-        if self.p_final is not None:
+        if self.until_convergence is not None:
             self.pred_ae.compile(optimizer=Adam(lr=self.lr_final), loss='mse')
 
             current_p = self.p_final
             print('Current p:', current_p)
-            bar = trange(self.final_batches)
+            bar = trange(MAX_UPDATES_UNTIL_CONVERGENCE)
+            lowest_valid_loss = np.inf
+            convergence_counter = 0
             for i in bar:
                 self.pred_loss_train.append(self.train_batch_pred_ae(train_getter, p=current_p))
                 smooth_loss = np.mean(self.pred_loss_train[-10:])
                 postfix['L train'] = smooth_loss
 
                 if i % TEST_EVERY_N_BATCHES == 0:
+                    convergence_counter += TEST_EVERY_N_BATCHES
                     self.pred_loss_test.append(self.train_batch_pred_ae(test_getter, p=current_p, test=True))
-                    smooth_loss = np.mean(self.pred_loss_test[-4:])
+                    smooth_loss = np.mean(self.pred_loss_test[-10:])
                     postfix['L test'] = smooth_loss
+                    if smooth_loss < lowest_valid_loss:
+                        lowest_valid_loss = smooth_loss
+                        convergence_counter = 0
+
+                    if convergence_counter > CONVERGENCE_AFTER_NO_IMPROVEMENT_UPDATES:
+                        print("Training converged.")
+                        break
 
                 bar.set_postfix(**postfix)
-
-            # self.save_modules()
 
 # ------------------------- DISPLAYING --------------------------------
 
@@ -368,9 +378,8 @@ class HydraNet(object):
             plt.plot(batches, baseline, '--')
 
         stages = [self.clear_batches]
-        for p_level in self.training_scheme['p_levels']:
+        for _ in self.training_scheme['p_levels']:
             stages.append(self.p_level_batches)
-        stages.append(self.final_batches)
         stages.append(self.final_batches)
         stages = np.cumsum(np.array(stages))
         plt.plot(stages, np.ones(len(stages)) * 0.0374, 'd')

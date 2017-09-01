@@ -37,11 +37,11 @@ IM_CHANNELS = 1
 IM_SHAPE = (IM_WIDTH, IM_HEIGHT, IM_CHANNELS)
 
 SERIES_SHIFT = 0
-EP_LEN = 200 - SERIES_SHIFT
+EP_LEN = 160 - SERIES_SHIFT
 
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 TEST_EVERY_N_BATCHES = 10
-CONVERGENCE_AFTER_NO_IMPROVEMENT_UPDATES = 200
+CONVERGENCE_AFTER_NO_IMPROVEMENT_UPDATES = 400
 
 DEFAULT_TRAIN_SCHEME = {
     'clear_batches': 0,  # how many batches?
@@ -86,7 +86,7 @@ class HydraNet(object):
         self.p_final = self.training_scheme['p_final']
         self.lr_final = self.training_scheme['lr_final']
         self.final_batches = self.training_scheme['final_batches']
-        self.max_until_convergence = self.training_scheme['until_convergence']
+        self.max_until_convergence = self.training_scheme['max_until_convergence']
 
         # loss trackers
         self.pred_loss_train = []
@@ -358,6 +358,8 @@ class HydraNet(object):
                         print('Training converged.')
                         break
 
+                    postfix.update({'lowest': lowest_valid_loss})
+
                 bar.set_postfix(**postfix)
             print('Finished before reaching convergence')
 
@@ -391,7 +393,7 @@ class HydraNet(object):
         plt.savefig(fpath)
 
     def draw_pred_gif(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False,
-                      folder_plots=FOLDER_PLOTS, tag=0, normalize=False):
+                      folder_plots=FOLDER_PLOTS, tag=0, normalize=False, nice_start=True):
         ep_images, poses = full_getter()
         ep_images = ep_images[0, ...].reshape((1,) + ep_images.shape[1:])
         ep_images_masked, removed_percepts = self.mask_percepts(ep_images, p, return_indices=True)
@@ -408,7 +410,7 @@ class HydraNet(object):
 
         pf_pred = []
         if use_pf:
-            pf = ParticleFilter(sim_config, n_particles=1000, nice_start=True)
+            pf = ParticleFilter(sim_config, n_particles=1000, nice_start=nice_start)
             for t in range(EP_LEN-SERIES_SHIFT):
                 if not removed_percepts[t]:
                     pose = poses[0, t, 0, :]

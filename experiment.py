@@ -44,7 +44,7 @@ sim_config = {
 }
 
 train_config = {
-    'sim_type': 'long',
+    'sim_type': 'easy',
     'sim_config': sim_config,
     'train': 'train',
     'n_episodes': 1000,
@@ -137,8 +137,9 @@ class Experiment(object):
         self.net.execute_scheme(self.train_box.get_batch_episodes, self.valid_box.get_batch_episodes)
         self.net.save_modules(self.folder_modules, tag='{}'.format(v_size))
         for j in range(10):
-            self.net.draw_pred_gif(self.valid_box.get_n_random_episodes_full, p=1.0, use_stepper=False, use_pf=False,
-                                   folder_plots=self.folder_gifs, tag='{}-{}'.format(val, j))
+            self.net.draw_pred_gif(self.valid_box.get_n_random_episodes_full, p=1.0, use_stepper=False, use_pf=(not j),
+                                   sim_config=sim_config, folder_plots=self.folder_gifs, tag='{}-{}'.format(val, j),
+                                   normalize=True)
         self.net.plot_losses(folder_plots=self.folder_plots, tag=val)
 
         # get numericals

@@ -408,7 +408,7 @@ class HydraNet(object):
 
         pf_pred = []
         if use_pf:
-            pf = ParticleFilter(sim_config, n_particles=5000, nice_start=True)
+            pf = ParticleFilter(sim_config, n_particles=1000, nice_start=True)
             for t in range(EP_LEN-SERIES_SHIFT):
                 if not removed_percepts[t]:
                     pose = poses[0, t, 0, :]

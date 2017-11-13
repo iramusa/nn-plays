@@ -37,24 +37,24 @@ IM_CHANNELS = 1
 IM_SHAPE = (IM_WIDTH, IM_HEIGHT, IM_CHANNELS)
 
 SERIES_SHIFT = 0
-EP_LEN = 160 - SERIES_SHIFT
+EP_LEN = 120 - SERIES_SHIFT
 
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 TEST_EVERY_N_BATCHES = 10
-CONVERGENCE_AFTER_NO_IMPROVEMENT_UPDATES = 400
+EXIT_AFTER_NO_IMPROVEMENT_UPDATES = 800
 
 DEFAULT_TRAIN_SCHEME = {
     'clear_batches': 0,  # how many batches?
-    'lr_initial': 0.001,
+    'lr_initial': 0.0005,
     'guaranteed_percepts': 5,  # how many first percepts are guaranteed to be non-masked?
     'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
     'p_levels': np.sqrt(np.linspace(0.05, 0.99**2, 10)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
-    'p_level_batches': 400,  # how many batches per level
+    'p_level_batches': 1600,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
-    'final_batches': 1000,  # number of batches for final training
-    'max_until_convergence': 9999,
+    'final_batches': 3000,  # number of batches for final training
+    'max_until_convergence': 15999,
     # 'v_size': 64, # sufficient for near no noise
     'v_size': 128,  #
 }
@@ -162,8 +162,9 @@ class HydraNet(object):
 
         # error pred
         input_s = Input(shape=(self.v_size,))
-        h = Dense(10, activation='relu')(input_s)
-        err = Dense(1, activation='relu')(h)
+        h = Dense(10, activation='sigmoid')(input_s)
+        # h = Dense(10, activation='sigmoid')(h)
+        err = Dense(1, activation='sigmoid')(h)
         m = Model(input_s, err, name='error_pred')
         m.compile(optimizer='adam', loss='mse')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
@@ -228,9 +229,9 @@ class HydraNet(object):
         input_im = Input(batch_shape=(1, IM_WIDTH, IM_HEIGHT, IM_CHANNELS))
         h = self.encoder(input_im)
         h = Reshape((1, self.v_size))(h)
-        h = self.gru_replay(h)
-        output_recon = self.decoder(h)
-        m = Model(input_im, output_recon, name='stepper')
+        state = self.gru_replay(h)
+        output_recon = self.decoder(state)
+        m = Model(input_im, output=(output_recon, state), name='stepper')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
         if self.verbose:
             m.summary()
@@ -339,22 +340,22 @@ class HydraNet(object):
             print('Current p:', current_p)
             bar = trange(self.max_until_convergence)
             lowest_valid_loss = np.inf
-            convergence_counter = 0
+            last_update = 0
             for i in bar:
                 self.pred_loss_train.append(self.train_batch_pred_ae(train_getter, p=current_p))
                 smooth_loss = np.mean(self.pred_loss_train[-10:])
                 postfix['L train'] = smooth_loss
 
                 if i % TEST_EVERY_N_BATCHES == 0:
-                    convergence_counter += TEST_EVERY_N_BATCHES
                     self.pred_loss_test.append(self.train_batch_pred_ae(test_getter, p=current_p, test=True))
-                    smooth_loss = np.mean(self.pred_loss_test[-10:])
+                    lookback = np.minimum(int(1 + i/TEST_EVERY_N_BATCHES), 10)
+                    smooth_loss = np.mean(self.pred_loss_test[-lookback:])
                     postfix['L test'] = smooth_loss
                     if smooth_loss < lowest_valid_loss:
                         lowest_valid_loss = smooth_loss
-                        convergence_counter = 0
+                        last_update = i
 
-                    if convergence_counter > CONVERGENCE_AFTER_NO_IMPROVEMENT_UPDATES:
+                    if i - last_update > EXIT_AFTER_NO_IMPROVEMENT_UPDATES:
                         print('Training converged.')
                         break
 
@@ -410,16 +411,17 @@ class HydraNet(object):
 
         pf_pred = []
         if use_pf:
-            pf = ParticleFilter(sim_config, n_particles=1000, nice_start=nice_start)
+            pf = ParticleFilter(sim_config, n_particles=4000, nice_start=nice_start)
             for t in range(EP_LEN-SERIES_SHIFT):
                 if not removed_percepts[t]:
                     pose = poses[0, t, 0, :]
                     pf.update(pose)
+                    pf.resample()
 
                 # add noise only if next percept is available
-                if t+1 < EP_LEN-SERIES_SHIFT and not removed_percepts[t+1]:
-                    pf.resample()
-                    pf.add_noise()
+                # if t+1 < EP_LEN-SERIES_SHIFT and not removed_percepts[t+1]:
+                #     pf.resample()
+                    # pf.add_noise()
 
                 pf.predict()
                 pf_pred.append(pf.draw())
@@ -486,8 +488,8 @@ if __name__ == '__main__':
     # test_box = DataContainer('data-balls/pass-valid.pt', batch_size=32, ep_len_read=EP_LEN)
     # train_box = DataContainer('data-balls/mixed-train.pt', batch_size=32, ep_len_read=EP_LEN)
     # test_box = DataContainer('data-balls/mixed-valid.pt', batch_size=32, ep_len_read=EP_LEN)
-    train_box = DataContainer('data-balls/bounce-train.pt', batch_size=32, ep_len_read=EP_LEN)
-    test_box = DataContainer('data-balls/bounce-valid.pt', batch_size=32, ep_len_read=EP_LEN)
+    train_box = DataContainer('data-balls/bounce-train.pt', batch_size=BATCH_SIZE, ep_len_read=EP_LEN)
+    test_box = DataContainer('data-balls/bounce-valid.pt', batch_size=BATCH_SIZE, ep_len_read=EP_LEN)
     train_box.populate_images()
     test_box.populate_images()
 

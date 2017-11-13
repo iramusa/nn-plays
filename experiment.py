@@ -17,45 +17,45 @@ FOLDER_EXPS = 'experiments'
 
 train_scheme = {
     'clear_batches': 0,  # how many batches?
-    'lr_initial': 0.001,
+    'lr_initial': 0.0005,
     'guaranteed_percepts': 5,  # how many first percepts are guaranteed to be non-masked?
     'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
     'p_levels': np.sqrt(np.linspace(0.05, 0.99 ** 2, 10)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
-    'p_level_batches': 400,  # how many batches per level
+    'p_level_batches': 1600,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
-    'final_batches': 1000,  # number of batches for final training
-    'max_until_convergence': 9999,
+    'final_batches': 4000,  # number of batches for final training
+    'max_until_convergence': 14999,
     # 'v_size': 64, # sufficient for near no noise
     'v_size': 128,  #
 }
 
 sim_config = {
-    'n_bodies': 1,
+    'n_bodies': 2,
     'radius_mode': 'uniform',
     'radius': 3.5,
     'mass_mode': 'uniform',
     'mass': 1.0,
-    'wall_action': 'random',
+    'wall_action': 'pass',
     'ball_action': 'pass',
     'measurement_noise': 0.0,
     'dynamics_noise': 0.000000001,
 }
 
 train_config = {
-    'sim_type': 'easy',
+    'sim_type': 'diff',
     'sim_config': sim_config,
     'train': 'train',
     'n_episodes': 1000,
-    'episode_length': 201,
+    'episode_length': EP_LEN,
     'folder': 'data-balls/',
     'random_seed': 0
 }
 
 valid_config = copy.deepcopy(train_config)
 valid_config['sim_config'] = sim_config
-valid_config['n_episodes'] = 500
+valid_config['n_episodes'] = 200
 valid_config['train'] = 'valid'
 valid_config['random_seed'] += 1
 
@@ -130,14 +130,14 @@ class Experiment(object):
         v_size = self.train_scheme['v_size']
         self.net = HydraNet(**self.train_scheme)
         tag = 'base-{}'.format(v_size)
-        self.net.load_modules(self.folder_base_models, tag=tag)
+        # self.net.load_modules(self.folder_base_models, tag=tag)
 
         print('Starting training')
 
         self.net.execute_scheme(self.train_box.get_batch_episodes, self.valid_box.get_batch_episodes)
         self.net.save_modules(self.folder_modules, tag='{}'.format(v_size))
         for j in range(10):
-            self.net.draw_pred_gif(self.valid_box.get_n_random_episodes_full, p=1.0, use_stepper=False, use_pf=(not j),
+            self.net.draw_pred_gif(self.valid_box.get_n_random_episodes_full, p=1.0, use_stepper=False, use_pf=False,
                                    sim_config=sim_config, folder_plots=self.folder_gifs, tag='{}-{}'.format(val, j),
                                    normalize=True)
         self.net.plot_losses(folder_plots=self.folder_plots, tag=val)
@@ -174,9 +174,10 @@ class Experiment(object):
 
 
 if __name__ == '__main__':
-    exp_name = 'bounce_random'
+    exp_name = '2_pass'
     ctrl_var = 'v_size'
-    var_vals = [128, 8, 16, 32, 64, 256, 512]
+    # var_vals = [128, 8, 16, 32, 64, 256, 512]
+    var_vals = [128, 64, 256, 512]
 
     exp = Experiment(ctrl_var, var_vals, exp_name)
     exp.run()

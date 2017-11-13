@@ -74,11 +74,11 @@ class Experiment(object):
         self.exp_name = exp_name
 
         # folders
-        self.folder_data = '{}/{}-{}/data/'.format(FOLDER_EXPS, self.exp_name, self.date)
-        self.folder_gifs = '{}/{}-{}/gifs/'.format(FOLDER_EXPS, self.exp_name, self.date)
-        self.folder_modules = '{}/{}-{}/modules/'.format(FOLDER_EXPS, self.exp_name, self.date)
-        self.folder_numerical = '{}/{}-{}/nums/'.format(FOLDER_EXPS, self.exp_name, self.date)
-        self.folder_plots = '{}/{}-{}/plots/'.format(FOLDER_EXPS, self.exp_name, self.date)
+        self.folder_data = '{}/{}-{}/data/'.format(FOLDER_EXPS, self.date,  self.exp_name)
+        self.folder_gifs = '{}/{}-{}/gifs/'.format(FOLDER_EXPS, self.date, self.exp_name)
+        self.folder_modules = '{}/{}-{}/modules/'.format(FOLDER_EXPS, self.date, self.exp_name)
+        self.folder_numerical = '{}/{}-{}/nums/'.format(FOLDER_EXPS, self.date, self.exp_name)
+        self.folder_plots = '{}/{}-{}/plots/'.format(FOLDER_EXPS, self.date, self.exp_name)
 
         self.folder_base_models = 'base_models/'
 

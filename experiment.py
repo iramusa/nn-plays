@@ -59,6 +59,7 @@ valid_config['n_episodes'] = 200
 valid_config['train'] = 'valid'
 valid_config['random_seed'] += 1
 
+GIFS_NO = 10
 
 class Experiment(object):
     def __init__(self, ctrl_var, var_vals, exp_name):
@@ -74,6 +75,7 @@ class Experiment(object):
         self.exp_name = exp_name
 
         # folders
+        self.folder_top = '{}/{}-{}/'.format(FOLDER_EXPS, self.date,  self.exp_name)
         self.folder_data = '{}/{}-{}/data/'.format(FOLDER_EXPS, self.date,  self.exp_name)
         self.folder_gifs = '{}/{}-{}/gifs/'.format(FOLDER_EXPS, self.date, self.exp_name)
         self.folder_modules = '{}/{}-{}/modules/'.format(FOLDER_EXPS, self.date, self.exp_name)
@@ -136,7 +138,7 @@ class Experiment(object):
 
         self.net.execute_scheme(self.train_box.get_batch_episodes, self.valid_box.get_batch_episodes)
         self.net.save_modules(self.folder_modules, tag='{}'.format(v_size))
-        for j in range(10):
+        for j in range(GIFS_NO):
             self.net.draw_pred_gif(self.valid_box.get_n_random_episodes_full, p=1.0, use_stepper=False, use_pf=False,
                                    sim_config=sim_config, folder_plots=self.folder_gifs, tag='{}-{}'.format(val, j),
                                    normalize=True)
@@ -172,6 +174,42 @@ class Experiment(object):
         self.valid_box = DataContainer(fpath_valid, batch_size=BATCH_SIZE, ep_len_read=EP_LEN)
         self.valid_box.populate_images()
 
+    def generate_report(self):
+        html_doc = "<html><head><title>{0}</title></head>\n<body>\n".format(self.exp_name)
+        html_doc += "<h2>{0}</h2>\n".format(self.exp_name)
+        html_doc += "Simulation configuration:\n{0}".format(self.sim_conf)
+
+        for val in self.var_vals:
+            table = "<table>" \
+                    "<tr>" \
+                    "<td>{0}</td>" \
+                    "<td>percept</td>" \
+                    "<td>ground truth</td>" \
+                    "<td>prediction</td>" \
+                    "<td>particle filter</td>" \
+                    "</tr>\n".format(self.ctrl_var)
+
+            for i in range(GIFS_NO):
+                new_row =   "<tr>" \
+                                "<td>{0}</td>" \
+                                "<td><img src=\"{1}{2}-{3}.gif\" width=\"140\"></td>" \
+                                "<td><img src=\"{1}{2}-{3}.gif\" width=\"140\"></td>" \
+                                "<td><img src=\"{1}{2}-{3}.gif\" width=\"140\"></td>" \
+                                "<td><img src=\"{1}{2}-{3}.gif\" width=\"140\"></td>" \
+                            "</tr>\n".format(self.ctrl_var, self.folder_gifs, val, i)
+                table += new_row
+
+            table += "</table>\n"
+            html_doc += table
+
+            html_doc += "<h3>{0} set to {1}</h3>\n".format(self.ctrl_var, val)
+            html_doc += "<center><img src=\"{0}loss-{1}.gif\" width=\"140\"></center>".format(self.folder_plots, val)
+
+        html_doc += "</body>"
+
+        rep = open('{}/report.html'.format(self.folder_top), 'w')
+        rep.write(html_doc)
+
 
 if __name__ == '__main__':
     exp_name = '2_bounce'
@@ -180,6 +218,7 @@ if __name__ == '__main__':
     var_vals = [256, 64, 128, 512]
 
     exp = Experiment(ctrl_var, var_vals, exp_name)
+    exp.generate_report()
     exp.run()
 
 

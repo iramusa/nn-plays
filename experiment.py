@@ -192,10 +192,10 @@ class Experiment(object):
             for i in range(GIFS_NO):
                 new_row =   "<tr>" \
                                 "<td>{0}</td>" \
-                                "<td><img src=\"{1}{2}-{3}.gif\" width=\"140\"></td>" \
-                                "<td><img src=\"{1}{2}-{3}.gif\" width=\"140\"></td>" \
-                                "<td><img src=\"{1}{2}-{3}.gif\" width=\"140\"></td>" \
-                                "<td><img src=\"{1}{2}-{3}.gif\" width=\"140\"></td>" \
+                                "<td><img src=\"{1}/percepts-{2}-{3}.gif\" width=\"140\"></td>" \
+                                "<td><img src=\"{1}/truths-{2}-{3}.gif\" width=\"140\"></td>" \
+                                "<td><img src=\"{1}/pae_preds-{2}-{3}.gif\" width=\"140\"></td>" \
+                                "<td><img src=\"{1}/pf_preds-{2}-{3}.gif\" width=\"140\"></td>" \
                             "</tr>\n".format(self.ctrl_var, self.folder_gifs, val, i)
                 table += new_row
 

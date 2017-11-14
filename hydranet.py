@@ -390,13 +390,76 @@ class HydraNet(object):
 
         plt.title('Loss')
         plt.ylabel('loss')
-        plt.ylim(ymax=1.2*0.0374)
+        # plt.ylim(ymax=1.2*0.0374)
         plt.xlabel('updates')
         plt.legend(['train', 'valid', 'baseline', 'stages'])
         fpath = '{}/loss-{}.png'.format(folder_plots, tag)
         plt.savefig(fpath)
 
     def draw_pred_gif(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False,
+                      folder_plots=FOLDER_PLOTS, tag=0, normalize=False, nice_start=True):
+        ep_images, poses = full_getter()
+        ep_images = ep_images[0, ...].reshape((1,) + ep_images.shape[1:])
+        ep_images_masked, removed_percepts = self.mask_percepts(ep_images, p, return_indices=True)
+        # net_preds = self.pred_ae.predict(ep_images_masked[:, 0:-SERIES_SHIFT, ...])
+        net_preds = self.pred_ae.predict(ep_images_masked[:, :, ...])
+
+        # stepper predictions
+        stepper_pred = []
+        if use_stepper:
+            self.stepper.reset_states()
+            for t in range(EP_LEN-SERIES_SHIFT):
+                im = ep_images_masked[:, t, ...]
+                stepper_pred.append(self.stepper.predict(im))
+
+        pf_pred = []
+        if use_pf:
+            pf = ParticleFilter(sim_config, n_particles=4000, nice_start=nice_start)
+            for t in range(EP_LEN-SERIES_SHIFT):
+                if not removed_percepts[t]:
+                    pose = poses[0, t, 0, :]
+                    pf.update(pose)
+                    pf.resample()
+
+                # add noise only if next percept is available
+                # if t+1 < EP_LEN-SERIES_SHIFT and not removed_percepts[t+1]:
+                #     pf.resample()
+                    # pf.add_noise()
+
+                pf.predict()
+                pf_pred.append(pf.draw())
+
+        # combine predictions
+        percepts = []
+        truths = []
+        pae_preds = []
+        pf_preds = []
+
+        for t in range(EP_LEN - SERIES_SHIFT):
+            percepts.append(ep_images_masked[0, t+SERIES_SHIFT, :, :, 0])
+            truths.append(ep_images[0, t+SERIES_SHIFT, :, :, 0])
+
+            if normalize:
+                net_preds[0, t, :, :, 0] /= np.max(net_preds[0, t, :, :, 0])
+            pae_preds.append(net_preds[0, t, :, :, 0])
+
+            # if use_stepper:
+            #     if normalize:
+            #         stepper_pred[t][0, :, :, 0] /= np.max(stepper_pred[t][0, :, :, 0])
+            #     images.append(stepper_pred[t][0, :, :, 0])
+
+            if use_pf:
+                if normalize:
+                    pf_pred[t][:, :, 0] /= np.max(pf_pred[t][:, :, 0])
+                pf_preds.append(pf_pred[t][:, :, 0])
+
+        imageio.mimsave('{}/percepts-{}.gif'.format(folder_plots, tag), percepts)
+        imageio.mimsave('{}/truths-{}.gif'.format(folder_plots, tag), truths)
+        imageio.mimsave('{}/pae_preds-{}.gif'.format(folder_plots, tag), pae_preds)
+        if use_pf:
+            imageio.mimsave('{}/pf_preds-{}.gif'.format(folder_plots, tag), pf_preds)
+
+    def draw_pred_gif_old(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False,
                       folder_plots=FOLDER_PLOTS, tag=0, normalize=False, nice_start=True):
         ep_images, poses = full_getter()
         ep_images = ep_images[0, ...].reshape((1,) + ep_images.shape[1:])
@@ -484,6 +547,7 @@ class HydraNet(object):
 
         fpath = '{}/predictions-{}.gif'.format(folder_plots, tag)
         imageio.mimsave(fpath, frames)
+
 
 
 if __name__ == '__main__':

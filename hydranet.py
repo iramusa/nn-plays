@@ -149,7 +149,10 @@ class HydraNet(object):
         # gru for training
         input_vs = Input(shape=(EP_LEN - SERIES_SHIFT, self.v_size,))
         # output_vs = LSTM(self.v_size, return_sequences=True)(input_vs)
-        output_vs = GRU(self.v_size, return_sequences=True)(input_vs)
+        # output_vs = GRU(self.v_size, return_sequences=True)(input_vs)
+        h = GRU(self.v_size, return_sequences=True)(input_vs)
+        # h = GRU(self.v_size, return_sequences=True)(h)
+        output_vs = GRU(self.v_size, return_sequences=True)(h)
 
         m = Model(input_vs, output_vs, name='state_pred_train')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)

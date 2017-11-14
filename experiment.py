@@ -37,7 +37,7 @@ sim_config = {
     'radius': 3.5,
     'mass_mode': 'uniform',
     'mass': 1.0,
-    'wall_action': 'pass',
+    'wall_action': 'bounce',
     'ball_action': 'pass',
     'measurement_noise': 0.0,
     'dynamics_noise': 0.000000001,
@@ -174,10 +174,10 @@ class Experiment(object):
 
 
 if __name__ == '__main__':
-    exp_name = '2_pass'
+    exp_name = '2_bounce'
     ctrl_var = 'v_size'
     # var_vals = [128, 8, 16, 32, 64, 256, 512]
-    var_vals = [128, 64, 256, 512]
+    var_vals = [256, 64, 128, 512]
 
     exp = Experiment(ctrl_var, var_vals, exp_name)
     exp.run()

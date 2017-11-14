@@ -231,7 +231,12 @@ class World(object):
                 pos_x += obs_noise * np.random.randn()
                 pos_y += obs_noise * np.random.randn()
 
-            board += np.exp(-(((self.I - pos_x) ** 2 + (self.J - pos_y) ** 2) / (body.r ** 2)) ** 4)
+            # board += np.exp(-(((self.I - pos_x) ** 2 + (self.J - pos_y) ** 2) / (body.r ** 2)) ** 4)
+
+            # better display for rolling
+            x_dist = (np.abs(self.I - pos_x) + WORLD_LEN / 2) % WORLD_LEN - WORLD_LEN / 2
+            y_dist = (np.abs(self.J - pos_y) + WORLD_LEN / 2) % WORLD_LEN - WORLD_LEN / 2
+            board += np.exp(-((x_dist ** 2 + y_dist ** 2) / (body.r ** 2)) ** 4)
 
         board = np.clip(board, 0, 1)
         return board.astype('float32')

@@ -5,6 +5,7 @@ import datetime
 
 import numpy as np
 import copy
+import matplotlib.pyplot as plt
 
 from structured_recorder import Record
 from structured_container import DataContainer
@@ -105,14 +106,6 @@ class Experiment(object):
         for i, val in enumerate(self.var_vals):
             self.run_single(val, i)
 
-        results = pd.DataFrame({
-            self.ctrl_var: self.x,
-            'train_error': self.train_errors,
-            'valid_error': self.valid_errors
-        })
-        fpath = '{}/errors.csv'.format(self.folder_numerical)
-        results.to_csv(fpath)
-
     def run_single(self, val, i):
         print('Setting {} to {}'.format(ctrl_var, val))
 
@@ -149,6 +142,25 @@ class Experiment(object):
         self.train_errors.append(self.get_errors(self.train_box.get_batch_episodes))
         self.valid_errors.append(self.get_errors(self.valid_box.get_batch_episodes))
 
+    def write_losses(self):
+        results = pd.DataFrame({
+            self.ctrl_var: self.x,
+            'train_error': self.train_errors,
+            'valid_error': self.valid_errors
+        })
+        fpath = '{}/errors.csv'.format(self.folder_numerical)
+        results.to_csv(fpath)
+
+        plt.scatter(self.x, self.train_errors)
+        plt.scatter(self.x, self.valid_errors)
+
+        plt.title('Loss')
+        plt.ylabel('loss')
+        plt.xlabel('updates')
+        plt.legend(['train', 'valid'])
+        fpath = '{}/run-summary.png'.format(self.folder_plots)
+        plt.savefig(fpath)
+
     def get_errors(self, data_getter, test_iters=20):
         error_cum = 0
         for j in range(test_iters):
@@ -179,6 +191,9 @@ class Experiment(object):
         html_doc += "<h2>{0}</h2>\n".format(self.exp_name)
         html_doc += "Simulation configuration:\n{0}".format(self.sim_conf)
 
+        html_doc += "<h3>Losses for different values of {}</h3>\n".format(self.ctrl_var)
+        html_doc += "<center><img src=\"{0}/run-summary.gif\" width=\"800\"></center>".format(self.folder_plots)
+
         for val in self.var_vals:
             table = "<table>" \
                     "<tr>" \
@@ -188,6 +203,9 @@ class Experiment(object):
                     "<td>prediction</td>" \
                     "<td>particle filter</td>" \
                     "</tr>\n".format(self.ctrl_var)
+
+            html_doc += "<h3>{0} set to {1}</h3>\n".format(self.ctrl_var, val)
+            html_doc += "<center><img src=\"{0}loss-{1}.gif\" width=\"800\"></center>".format(self.folder_plots, val)
 
             for i in range(GIFS_NO):
                 new_row =   "<tr>" \
@@ -202,9 +220,6 @@ class Experiment(object):
             table += "</table>\n"
             html_doc += table
 
-            html_doc += "<h3>{0} set to {1}</h3>\n".format(self.ctrl_var, val)
-            html_doc += "<center><img src=\"{0}loss-{1}.gif\" width=\"140\"></center>".format(self.folder_plots, val)
-
         html_doc += "</body>"
 
         rep = open('{}/report.html'.format(self.folder_top), 'w')
@@ -212,14 +227,15 @@ class Experiment(object):
 
 
 if __name__ == '__main__':
-    exp_name = '2_bounce'
+    exp_name = 'simple'
     ctrl_var = 'v_size'
-    # var_vals = [128, 8, 16, 32, 64, 256, 512]
+    # var_vals = [128, 8, 16, 32, 64, 256, 512, 1024]
     var_vals = [256, 64, 128, 512]
 
     exp = Experiment(ctrl_var, var_vals, exp_name)
     exp.generate_report()
     exp.run()
+    exp.write_losses()
 
 
 

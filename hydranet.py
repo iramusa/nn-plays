@@ -37,7 +37,7 @@ IM_CHANNELS = 1
 IM_SHAPE = (IM_WIDTH, IM_HEIGHT, IM_CHANNELS)
 
 SERIES_SHIFT = 0
-EP_LEN = 120 - SERIES_SHIFT
+EP_LEN = 150 - SERIES_SHIFT
 
 BATCH_SIZE = 8
 TEST_EVERY_N_BATCHES = 10
@@ -48,13 +48,16 @@ DEFAULT_TRAIN_SCHEME = {
     'lr_initial': 0.0005,
     'guaranteed_percepts': 5,  # how many first percepts are guaranteed to be non-masked?
     'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
-    'p_levels': np.sqrt(np.linspace(0.05, 0.99**2, 10)).tolist(),  # progressing probabilities of masking percepts
+    'p_levels': np.sqrt(np.linspace(0.05, 0.99**2, 8)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
-    'p_level_batches': 1600,  # how many batches per level
+    # 'p_level_batches': 1000,  # how many batches per level
+    'p_level_batches': 100,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
-    'final_batches': 3000,  # number of batches for final training
-    'max_until_convergence': 15999,
+    # 'final_batches': 3000,  # number of batches for final training
+    'final_batches': 300,  # number of batches for final training
+    'max_until_convergence': 1000,
+    # 'max_until_convergence': 10000,
     # 'v_size': 64, # sufficient for near no noise
     'v_size': 128,  #
 }
@@ -149,10 +152,10 @@ class HydraNet(object):
         # gru for training
         input_vs = Input(shape=(EP_LEN - SERIES_SHIFT, self.v_size,))
         # output_vs = LSTM(self.v_size, return_sequences=True)(input_vs)
-        # output_vs = GRU(self.v_size, return_sequences=True)(input_vs)
-        h = GRU(self.v_size, return_sequences=True)(input_vs)
+        output_vs = GRU(self.v_size, return_sequences=True)(input_vs)
+        # h = GRU(self.v_size, return_sequences=True)(input_vs)
         # h = GRU(self.v_size, return_sequences=True)(h)
-        output_vs = GRU(self.v_size, return_sequences=True)(h)
+        # output_vs = GRU(self.v_size, return_sequences=True)(h)
 
         m = Model(input_vs, output_vs, name='state_pred_train')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
@@ -547,8 +550,6 @@ class HydraNet(object):
 
         fpath = '{}/predictions-{}.gif'.format(folder_plots, tag)
         imageio.mimsave(fpath, frames)
-
-
 
 if __name__ == '__main__':
     # train_box = DataContainer('data-balls/pass-train.pt', batch_size=32, ep_len_read=EP_LEN)

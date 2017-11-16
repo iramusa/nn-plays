@@ -70,10 +70,11 @@ class Record(object):
                 world.run()
                 t_dict = {}
                 poses = [np.copy(body.pos) for body in world.bodies]
-                # vels = [body.vel for body in world.bodies]
+                vels = [body.vel for body in world.bodies]
                 measures = [np.copy(body.measured_pos) for body in world.bodies]
 
                 t_dict.update({'poses': poses})
+                t_dict.update({'vels': vels})
                 t_dict.update({'measures': measures})
                 t_list.append(t_dict)
 

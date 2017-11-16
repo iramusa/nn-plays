@@ -16,10 +16,9 @@ def norm_pdf(x):
 
 
 class ParticleFilter(object):
-    def __init__(self, sim_config=DEFAULT_SIM_CONFIG, n_particles=10000, nice_start=False):
+    def __init__(self, sim_config=DEFAULT_SIM_CONFIG, n_particles=1000):
         self.sim_config = copy.deepcopy(DEFAULT_SIM_CONFIG)
         self.sim_config.update(sim_config)
-        self.nice_start = nice_start
         self.n = n_particles
         self.parts = []
 
@@ -31,7 +30,7 @@ class ParticleFilter(object):
 
         self.dynamics_noise = sim_config['dynamics_noise']
         if self.dynamics_noise == 0.0:
-            self.sim_config['dynamics_noise'] = 0.02
+            self.sim_config['dynamics_noise'] = 0.01
 
         for _ in range(self.n):
             self.parts.append(balls_sim.World(**sim_config))
@@ -40,11 +39,14 @@ class ParticleFilter(object):
         space = np.linspace(0.5, WORLD_LEN - 0.5, WORLD_LEN)
         self.I, self.J = np.meshgrid(space, space)
 
-    def warm_start(self, pos, vel):
-        for i, part in enumerate(self.parts):
+    def warm_start(self, pos, vel=None):
+        assert len(pos) == self.n_targets
+
+        for part in self.parts:
             for j, body in enumerate(part.bodies):
                 body.pos = pos[j]
-                body.vel = vel[j]
+                if vel is not None:
+                    body.vel = vel[j]
 
     def add_noise(self, noise_level=0.2):
         for part in self.parts:
@@ -56,33 +58,14 @@ class ParticleFilter(object):
             part.run()
 
     def update(self, measurement):
-        if self.n_targets !=1:
-            # raise ValueError('Wrong number of targets')
-            if self.nice_start:
-                self.nice_start = False
-                for i, part in enumerate(self.parts):
-                    for j, body in enumerate(part.bodies):
-                        body.pos = measurement[j] + 0*np.random.normal(0, self.measurement_noise, 2)
-            else:
-                for i, part in enumerate(self.parts):
-                    for j, body in enumerate(part.bodies):
-                        dist = np.linalg.norm(measurement[j] - body.pos)
-                        self.w[i] *= norm_pdf(dist / self.measurement_noise)
+        assert len(measurement) == self.n_targets
 
-                self.w /= np.sum(self.w)
+        for i, part in enumerate(self.parts):
+            for j, body in enumerate(part.bodies):
+                dist = np.linalg.norm(measurement[j] - body.pos)
+                self.w[i] *= norm_pdf(dist / self.measurement_noise)
 
-        else:
-            if self.nice_start:
-                self.nice_start = False
-                for i, part in enumerate(self.parts):
-                    part.bodies[0].pos = measurement[0] + 0*np.random.normal(0, self.measurement_noise, 2)
-            else:
-                for i, part in enumerate(self.parts):
-                    # circular noise, do rectangular?
-                    dist = np.linalg.norm(measurement[0] - part.bodies[0].pos)
-                    self.w[i] *= norm_pdf(dist/self.measurement_noise)
-
-                self.w /= np.sum(self.w)
+        self.w /= np.sum(self.w)
 
     def resample(self):
         indices = np.array(range(self.n))

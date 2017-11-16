@@ -91,20 +91,24 @@ class DataContainer(object):
 
         return images
 
-    def get_n_random_episodes_full(self, n=2):
+    def get_n_random_episodes_full(self, n=1):
         eps = self.get_n_random_structured_episodes(n)
         images = np.array([self.episode2images(ep) for ep in eps])
 
         eps_poses = []
+        eps_vels = []
         for ep in eps:
             poses = []
+            vels = []
             for t in ep['t_list']:
                 poses.append(t['poses'])
+                vels.append(t['vels'])
 
             eps_poses.append(poses)
+            eps_vels.append(vels)
 
-        poses = np.array(eps_poses)
-        return images, poses
+        # poses = np.array(eps_poses)
+        return images, eps_poses, eps_vels
 
     def get_episode(self):
         return self.get_n_random_episodes(1)[0]

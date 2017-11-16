@@ -50,15 +50,11 @@ DEFAULT_TRAIN_SCHEME = {
     'uncertain_percepts': 8,  # how many further have a high chance to be non-masked?
     'p_levels': np.sqrt(np.linspace(0.05, 0.99**2, 8)).tolist(),  # progressing probabilities of masking percepts
     # 'p_levels': [],  # progressing probabilities of masking percepts
-    # 'p_level_batches': 1000,  # how many batches per level
-    'p_level_batches': 100,  # how many batches per level
+    'p_level_batches': 1000,  # how many batches per level
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
-    # 'final_batches': 3000,  # number of batches for final training
-    'final_batches': 300,  # number of batches for final training
-    'max_until_convergence': 1000,
-    # 'max_until_convergence': 10000,
-    # 'v_size': 64, # sufficient for near no noise
+    'final_batches': 3000,  # number of batches for final training
+    'max_until_convergence': 10000,
     'v_size': 128,  #
 }
 
@@ -177,7 +173,6 @@ class HydraNet(object):
         if self.verbose:
             m.summary()
         self.err_pred = m
-
 
 
         # TODO: aux variables: loss, position, velocity
@@ -372,65 +367,76 @@ class HydraNet(object):
 
 # ------------------------- DISPLAYING --------------------------------
 
-    def plot_losses(self, folder_plots=FOLDER_PLOTS, tag=0):
+    def plot_losses(self, folder_plots=FOLDER_PLOTS, tag=0, image_getter=None):
         plt.clf()
 
         if len(self.pred_loss_test) < 1:
             print('Not enough loss measurements to plot')
+            return
+
+        # compute baseline loss
+        if image_getter is not None:
+            images = image_getter()
+            av_pixel_intensity = np.mean(images)
+            baseline_level = np.mean((images-av_pixel_intensity)**2)
         else:
-            plt.plot(self.pred_loss_train)
-            batches = np.arange(len(self.pred_loss_test)) * TEST_EVERY_N_BATCHES
-            plt.plot(batches, self.pred_loss_test)
-            baseline = np.ones(len(self.pred_loss_test)) * 0.0374
-            plt.plot(batches, baseline, '--')
+            baseline_level = 0.1
+
+        plt.plot(self.pred_loss_train)
+        batches = np.arange(len(self.pred_loss_test)) * TEST_EVERY_N_BATCHES
+        plt.plot(batches, self.pred_loss_test)
+        baseline = np.ones(len(self.pred_loss_test)) * baseline_level
+        plt.plot(batches, baseline, '--')
 
         stages = [self.clear_batches]
         for _ in self.training_scheme['p_levels']:
             stages.append(self.p_level_batches)
         stages.append(self.final_batches)
         stages = np.cumsum(np.array(stages))
-        plt.plot(stages, np.ones(len(stages)) * 0.0374, 'd')
+        plt.plot(stages, np.ones(len(stages)) * baseline_level, 'd')
 
         plt.title('Loss')
-        plt.ylabel('loss')
-        # plt.ylim(ymax=1.2*0.0374)
+        plt.ylabel('mse loss')
+        plt.ylim(ymax=1.2*baseline_level)
         plt.xlabel('updates')
         plt.legend(['train', 'valid', 'baseline', 'stages'])
         fpath = '{}/loss-{}.png'.format(folder_plots, tag)
         plt.savefig(fpath)
 
+        return baseline_level
+
     def draw_pred_gif(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False,
-                      folder_plots=FOLDER_PLOTS, tag=0, normalize=False, nice_start=True):
-        ep_images, poses = full_getter()
+                      folder_plots=FOLDER_PLOTS, tag=0, normalize=False):
+
+        ep_images, poses, eps_vels = full_getter()
         ep_images = ep_images[0, ...].reshape((1,) + ep_images.shape[1:])
         ep_images_masked, removed_percepts = self.mask_percepts(ep_images, p, return_indices=True)
         # net_preds = self.pred_ae.predict(ep_images_masked[:, 0:-SERIES_SHIFT, ...])
         net_preds = self.pred_ae.predict(ep_images_masked[:, :, ...])
 
         # stepper predictions
-        stepper_pred = []
-        if use_stepper:
-            self.stepper.reset_states()
-            for t in range(EP_LEN-SERIES_SHIFT):
-                im = ep_images_masked[:, t, ...]
-                stepper_pred.append(self.stepper.predict(im))
+        # stepper_pred = []
+        # if use_stepper:
+        #     self.stepper.reset_states()
+        #     for t in range(EP_LEN-SERIES_SHIFT):
+        #         im = ep_images_masked[:, t, ...]
+        #         stepper_pred.append(self.stepper.predict(im))
 
         pf_pred = []
         if use_pf:
-            pf = ParticleFilter(sim_config, n_particles=4000, nice_start=nice_start)
+            pf = ParticleFilter(sim_config, n_particles=100)
+            init_poses = poses[0][0]
+            init_vels = eps_vels[0][0]
+            pf.warm_start(init_poses, init_vels)
             for t in range(EP_LEN-SERIES_SHIFT):
                 if not removed_percepts[t]:
-                    pose = poses[0, t, 0, :]
-                    pf.update(pose)
+                    measurements = poses[0][t]
+                    # print(measurements)
+                    pf.update(measurements)
                     pf.resample()
 
-                # add noise only if next percept is available
-                # if t+1 < EP_LEN-SERIES_SHIFT and not removed_percepts[t+1]:
-                #     pf.resample()
-                    # pf.add_noise()
-
-                pf.predict()
                 pf_pred.append(pf.draw())
+                pf.predict()
 
         # combine predictions
         percepts = []
@@ -438,29 +444,37 @@ class HydraNet(object):
         pae_preds = []
         pf_preds = []
 
+        pae_losses = []
+        pf_losses = []
+
         for t in range(EP_LEN - SERIES_SHIFT):
             percepts.append(ep_images_masked[0, t+SERIES_SHIFT, :, :, 0])
             truths.append(ep_images[0, t+SERIES_SHIFT, :, :, 0])
-
-            if normalize:
-                net_preds[0, t, :, :, 0] /= np.max(net_preds[0, t, :, :, 0])
             pae_preds.append(net_preds[0, t, :, :, 0])
 
-            # if use_stepper:
+            if use_pf:
+                pf_preds.append(pf_pred[t][:, :, 0])
+
+                pae_losses.append(np.mean((truths[-1] - pae_preds[-1])**2))
+                pf_losses.append(np.mean((truths[-1] - pf_preds[-1])**2))
+
+            if normalize:
+                pae_preds[-1] /= np.max(pae_preds[-1])
+                if use_pf:
+                    pf_preds[-1] /= np.max(pf_preds[-1])
+
+                        # if use_stepper:
             #     if normalize:
             #         stepper_pred[t][0, :, :, 0] /= np.max(stepper_pred[t][0, :, :, 0])
             #     images.append(stepper_pred[t][0, :, :, 0])
 
-            if use_pf:
-                if normalize:
-                    pf_pred[t][:, :, 0] /= np.max(pf_pred[t][:, :, 0])
-                pf_preds.append(pf_pred[t][:, :, 0])
-
         imageio.mimsave('{}/percepts-{}.gif'.format(folder_plots, tag), percepts)
         imageio.mimsave('{}/truths-{}.gif'.format(folder_plots, tag), truths)
         imageio.mimsave('{}/pae_preds-{}.gif'.format(folder_plots, tag), pae_preds)
+
         if use_pf:
             imageio.mimsave('{}/pf_preds-{}.gif'.format(folder_plots, tag), pf_preds)
+            return {'pae_losses': pae_losses, 'pf_losses': pf_losses}
 
     def draw_pred_gif_old(self, full_getter, p=1.0, use_pf=False, sim_config=None, use_stepper=False,
                       folder_plots=FOLDER_PLOTS, tag=0, normalize=False, nice_start=True):

@@ -31,7 +31,7 @@ train_scheme = {
 }
 
 sim_config = {
-    'n_bodies': 1,
+    'n_bodies': 2,
     'radius_mode': 'uniform',
     'radius': 3.5,
     'mass_mode': 'uniform',
@@ -191,7 +191,7 @@ class Experiment(object):
 
         plt.title('Loss')
         plt.ylabel('loss')
-        plt.xlabel('updates')
+        plt.xlabel(self.ctrl_var)
         plt.legend(['train', 'valid'])
         fpath = '{}/run-summary.png'.format(self.folder_plots)
         plt.savefig(fpath)
@@ -267,9 +267,9 @@ class Experiment(object):
 
 
 if __name__ == '__main__':
-    exp_name = 'simple'
+    exp_name = 'wallpass_2ball_2layer'
     ctrl_var = 'v_size'
-    var_vals = [32, 64, 128, 256, 512, 1024, 2048]
+    var_vals = [32, 64, 128, 256, 512, 1024]
     # var_vals = [256, 64, 128, 512]
 
     exp = Experiment(ctrl_var, var_vals, exp_name)

@@ -8,7 +8,7 @@ from keras.models import Model, Sequential
 from keras.layers import Input, Dense
 from keras.optimizers import Adam, Adadelta, RMSprop, SGD
 from keras.layers import Input, Dense, Convolution2D, Deconvolution2D, MaxPooling2D,\
-    UpSampling2D, Merge, LSTM, GRU, Flatten, ZeroPadding2D, Reshape, BatchNormalization, Dropout
+    UpSampling2D, merge, LSTM, GRU, Flatten, ZeroPadding2D, Reshape, BatchNormalization, Dropout
 from keras.layers.wrappers import TimeDistributed
 from keras.utils.visualize_util import plot as draw_network
 
@@ -148,10 +148,20 @@ class HydraNet(object):
         # gru for training
         input_vs = Input(shape=(EP_LEN - SERIES_SHIFT, self.v_size,))
         # output_vs = LSTM(self.v_size, return_sequences=True)(input_vs)
-        output_vs = GRU(self.v_size, return_sequences=True)(input_vs)
-        # h = GRU(self.v_size, return_sequences=True)(input_vs)
+        # output_vs = GRU(self.v_size, return_sequences=True)(input_vs)
+
+        # mulitple parallel grus
+        # GRU_SPLIT = 4
+        # outputs = []
+        # for _ in range(GRU_SPLIT):
+        #     outputs.append(GRU(self.v_size // GRU_SPLIT, return_sequences=True)(input_vs))
+        #
+        # output_vs = merge(outputs, mode='concat')
+
+        # multiple layers
+        h = GRU(self.v_size, return_sequences=True)(input_vs)
         # h = GRU(self.v_size, return_sequences=True)(h)
-        # output_vs = GRU(self.v_size, return_sequences=True)(h)
+        output_vs = GRU(self.v_size, return_sequences=True)(h)
 
         m = Model(input_vs, output_vs, name='state_pred_train')
         draw_network(m, to_file='{0}/{1}.png'.format(FOLDER_DIAGRAMS, m.name), show_layer_names=True, show_shapes=True)
@@ -424,7 +434,7 @@ class HydraNet(object):
 
         pf_pred = []
         if use_pf:
-            pf = ParticleFilter(sim_config, n_particles=100)
+            pf = ParticleFilter(sim_config, n_particles=2000)
             init_poses = poses[0][0]
             init_vels = eps_vels[0][0]
             pf.warm_start(init_poses, init_vels)

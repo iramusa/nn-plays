@@ -26,14 +26,14 @@ train_scheme = {
     'p_final': 0.99,  # final probability level
     'lr_final': 0.0002,
     'final_batches': 2000,  # number of batches for final training
-    'max_until_convergence': 600,
+    'max_until_convergence': 1600,
     'v_size': 128,  #
 }
 
 sim_config = {
-    'n_bodies': 2,
+    'n_bodies': 1,
     'radius_mode': 'uniform',
-    'radius': 3.5,
+    'radius': 2.0,
     'mass_mode': 'uniform',
     'mass': 1.0,
     'wall_action': 'pass',
@@ -267,9 +267,9 @@ class Experiment(object):
 
 
 if __name__ == '__main__':
-    exp_name = 'wallpass_2ball_2layer'
+    exp_name = 'wp_1b_d004_small'
     ctrl_var = 'v_size'
-    var_vals = [32, 64, 128, 256, 512, 1024]
+    var_vals = [128, 32, 64, 256, 512, 1024]
     # var_vals = [256, 64, 128, 512]
 
     exp = Experiment(ctrl_var, var_vals, exp_name)

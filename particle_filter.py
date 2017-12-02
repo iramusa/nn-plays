@@ -25,12 +25,12 @@ class ParticleFilter(object):
         self.n_targets = sim_config['n_bodies']
 
         self.measurement_noise = sim_config['measurement_noise']
-        if self.measurement_noise == 0.0:
-            self.measurement_noise = 0.05
+        # if self.measurement_noise == 0.0:
+        #     self.measurement_noise = 0.05
 
         self.dynamics_noise = sim_config['dynamics_noise']
-        if self.dynamics_noise == 0.0:
-            self.sim_config['dynamics_noise'] = 0.01
+        # if self.dynamics_noise == 0.0:
+        #     self.sim_config['dynamics_noise'] = 0.01
 
         for _ in range(self.n):
             self.parts.append(balls_sim.World(**sim_config))
@@ -44,9 +44,9 @@ class ParticleFilter(object):
 
         for part in self.parts:
             for j, body in enumerate(part.bodies):
-                body.pos = pos[j]
+                body.pos = copy.deepcopy(pos[j])
                 if vel is not None:
-                    body.vel = vel[j]
+                    body.vel = copy.deepcopy(vel[j])
 
     def add_noise(self, noise_level=0.2):
         for part in self.parts:

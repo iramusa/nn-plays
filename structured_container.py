@@ -8,7 +8,7 @@ from balls_sim import WORLD_LEN
 
 
 class DataContainer(object):
-    def __init__(self, file, batch_size, ep_len_read=20, shape=((28, 28, 1))):
+    def __init__(self, file, batch_size, ep_len_read=100, shape=((28, 28, 1))):
         self.file = file
         self.ep_len_read = ep_len_read
         self.batch_size = batch_size
@@ -89,6 +89,15 @@ class DataContainer(object):
 
             return images
 
+        return images
+
+    def get_n_random_images(self, n):
+        assert self.images is not None
+
+        ep_rolls = np.random.randint(0, self.n_episodes, n)
+        im_rolls = np.random.randint(0, self.ep_len_read, n)
+
+        images = self.images[ep_rolls, im_rolls, ...].astype('float')
         return images
 
     def get_n_random_episodes_full(self, n=1):

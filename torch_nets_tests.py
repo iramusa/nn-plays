@@ -82,7 +82,7 @@ def test_predictive_autoencoder():
     except OSError:
         pass
 
-    data_test = DataContainer('data-balls/2b-small-train.pt', batch_size=BATCH_SIZE, ep_len_read=EP_LEN)
+    data_test = DataContainer('data-balls/2b-small-test.pt', batch_size=BATCH_SIZE, ep_len_read=EP_LEN)
     data_test.populate_images()
     # data_test.images.transpose((0, 1, 4, 2, 3))
 
@@ -120,7 +120,7 @@ def test_predictive_autoencoder():
 
     optimiser = optim.Adam(net.parameters(), lr=0.0002)
 
-    net.load_state_dict(torch.load("outputs_net_tests/autencoder_epoch_5.pth"))
+    net.load_state_dict(torch.load("outputs_net_tests/autencoder_epoch_3.pth"))
 
     for epoch in range(EPOCHS):
         for update in range(UPDATES_PER_EPOCH):

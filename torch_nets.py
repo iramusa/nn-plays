@@ -13,6 +13,7 @@ IM_CHANNELS = 1
 IM_WIDTH = 28
 V_SIZE = 256
 N_FILTERS = 16
+EP_LEN = 100
 
 
 class Encoder(nn.Module):
@@ -50,6 +51,7 @@ class Decoder(nn.Module):
     def __init__(self, v_size=V_SIZE):
         super(Decoder, self).__init__()
         self.fc_seq = nn.Sequential(
+            # second fc layer?
             # nn.Linear(v_size, v_size),
             # nn.ReLU(inplace=True),
 
@@ -66,11 +68,6 @@ class Decoder(nn.Module):
 
             # size: (N_FILTERS, 16, 16)
             nn.ConvTranspose2d(N_FILTERS, IM_CHANNELS, kernel_size=4, stride=2, padding=1, bias=True),
-            # nn.ReLU(True),
-
-            # size: (N_FILTERS, 28, 28)
-            # nn.ConvTranspose2d(N_FILTERS, IM_CHANNELS, kernel_size=4, stride=2, padding=1, bias=True),
-            # nn.Tanh()
             nn.Sigmoid(),
 
             # size: (N_FILTERS, 8, 8)
@@ -94,6 +91,28 @@ class Autoencoder(nn.Module):
         return out
 
 
+class PredictiveAutoencoder(nn.Module):
+    def __init__(self, v_size=V_SIZE):
+        super(PredictiveAutoencoder, self).__init__()
+        self.encoder = Encoder(v_size)
+        self.gru = nn.GRU(v_size, v_size, num_layers=1)
+        self.decoder = Decoder(v_size)
+        self.bn = nn.BatchNorm1d(v_size)
+
+    def forward(self, x):
+        ep_len = x.size(0)
+        batch_size = x.size(1)
+
+        h = self.encoder(x.view(ep_len * batch_size, x.size(2), x.size(3), x.size(4)))
+        h, state_f = self.gru(h.view(ep_len, batch_size, -1))
+        # h = h.view(ep_len, batch_size, -1)
+        out = self.decoder(h.view(ep_len * batch_size, -1))
+        # out = self.decoder(self.bn(h.view(ep_len * batch_size, -1)))
+        # out = self.decoder(self.bn(h.view(ep_len * batch_size, -1)))
+
+        return out.view(x.size())
+
+
 if __name__ == "__main__":
     BATCH_SIZE = 32
 
@@ -103,8 +122,11 @@ if __name__ == "__main__":
     # net = Decoder()
     # x = Variable(torch.randn(BATCH_SIZE, V_SIZE))
 
-    net = Autoencoder()
-    x = Variable(torch.randn(BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
+    # net = Autoencoder()
+    # x = Variable(torch.randn(BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
+
+    net = PredictiveAutoencoder()
+    x = Variable(torch.randn(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
 
     res = net(x)
     print(res)

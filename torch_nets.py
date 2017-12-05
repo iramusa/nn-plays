@@ -11,7 +11,13 @@ import numpy as np
 
 IM_CHANNELS = 1
 IM_WIDTH = 28
+
 V_SIZE = 256
+BS_SIZE = 256
+N_SIZE = 256
+D_SIZE = 64
+G_SIZE = 256
+
 N_FILTERS = 16
 EP_LEN = 100
 
@@ -48,14 +54,14 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, v_size=V_SIZE):
+    def __init__(self, bs_size=BS_SIZE):
         super(Decoder, self).__init__()
         self.fc_seq = nn.Sequential(
             # second fc layer?
             # nn.Linear(v_size, v_size),
             # nn.ReLU(inplace=True),
 
-            nn.Linear(v_size, N_FILTERS * 8 * 8),
+            nn.Linear(bs_size, N_FILTERS * 8 * 8),
             nn.ReLU(inplace=True),
         )
 
@@ -91,26 +97,93 @@ class Autoencoder(nn.Module):
         return out
 
 
-class PredictiveAutoencoder(nn.Module):
-    def __init__(self, v_size=V_SIZE):
-        super(PredictiveAutoencoder, self).__init__()
+class BeliefStatePropagator(nn.Module):
+    def __init__(self, v_size=V_SIZE, bs_size=BS_SIZE):
+        super(BeliefStatePropagator, self).__init__()
         self.encoder = Encoder(v_size)
-        self.gru = nn.GRU(v_size, v_size, num_layers=1)
-        self.decoder = Decoder(v_size)
-        self.bn = nn.BatchNorm1d(v_size)
+        self.gru = nn.GRU(v_size, bs_size, num_layers=1)
 
     def forward(self, x):
         ep_len = x.size(0)
         batch_size = x.size(1)
 
         h = self.encoder(x.view(ep_len * batch_size, x.size(2), x.size(3), x.size(4)))
-        h, state_f = self.gru(h.view(ep_len, batch_size, -1))
-        # h = h.view(ep_len, batch_size, -1)
+        out, state_f = self.gru(h.view(ep_len, batch_size, -1))
+        return out
+
+
+class PredictiveAutoencoder(nn.Module):
+    def __init__(self, v_size=V_SIZE, bs_size=BS_SIZE):
+        super(PredictiveAutoencoder, self).__init__()
+        self.bs_prop = BeliefStatePropagator(v_size, bs_size)
+        self.decoder = Decoder(bs_size)
+        # self.bn = nn.BatchNorm1d(v_size)
+
+    def forward(self, x):
+        ep_len = x.size(0)
+        batch_size = x.size(1)
+
+        h = self.bs_prop(x)
         out = self.decoder(h.view(ep_len * batch_size, -1))
-        # out = self.decoder(self.bn(h.view(ep_len * batch_size, -1)))
-        # out = self.decoder(self.bn(h.view(ep_len * batch_size, -1)))
 
         return out.view(x.size())
+
+
+class BeliefStateDiscriminator(nn.Module):
+    def __init__(self, bs_size=BS_SIZE, d_size=D_SIZE):
+        super(BeliefStateDiscriminator, self).__init__()
+        self.fc_seq = nn.Sequential(
+            nn.Linear(bs_size, d_size),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(d_size, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        out = self.fc_seq(x)
+        return out
+
+
+class BeliefStateGenerator(nn.Module):
+    def __init__(self, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE):
+        super(BeliefStateGenerator, self).__init__()
+        self.fc_seq = nn.Sequential(
+            nn.Linear(bs_size + n_size, g_size),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(g_size, bs_size),
+            nn.Tanh(),
+        )
+
+    def forward(self, noise, bs):
+        """
+
+        :param noise: should be normally distributed
+        :param bs: from state distribution (somewhat similar to uniform)
+        :return:
+        """
+        noise_joint = torch.cat([noise, bs], dim=-1)
+        out = self.fc_seq(noise_joint)
+        return out
+
+
+class BeliefStateGAN(nn.Module):
+    def __init__(self, bs_size=BS_SIZE, n_size=N_SIZE, d_size=D_SIZE, g_size=G_SIZE):
+        super(BeliefStateGAN, self).__init__()
+        self.D = BeliefStateDiscriminator(bs_size=bs_size, d_size=d_size)
+        self.G = BeliefStateGenerator(bs_size=bs_size, n_size=n_size, g_size=g_size)
+
+    def forward(self, noise, bs):
+        """
+
+        :param noise: should be normally distributed
+        :param bs: from state distribution (somewhat similar to uniform)
+        :return:
+        """
+        state = self.G(noise, bs)
+        label = self.D(state)
+        return label
 
 
 if __name__ == "__main__":
@@ -125,10 +198,16 @@ if __name__ == "__main__":
     # net = Autoencoder()
     # x = Variable(torch.randn(BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
 
-    net = PredictiveAutoencoder()
-    x = Variable(torch.randn(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
+    # net = PredictiveAutoencoder()
+    # x = Variable(torch.randn(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
 
-    res = net(x)
+    net = BeliefStateGAN()
+    # net = BeliefStateGenerator()
+    noise = Variable(torch.randn(BATCH_SIZE, N_SIZE))
+    bs = Variable(torch.randn(BATCH_SIZE, BS_SIZE))
+
+    fake = net.G(noise, bs)
+    res = net.D(fake)
     print(res)
 
 

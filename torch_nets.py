@@ -40,6 +40,7 @@ class Encoder(nn.Module):
         )
         self.fc_seq = nn.Sequential(
             nn.Linear(N_FILTERS * 8 * 8, v_size),
+            # nn.BatchNorm1d(v_size),
             nn.ReLU(inplace=True),
 
             # second fc layer?
@@ -184,6 +185,97 @@ class BeliefStateGAN(nn.Module):
         state = self.G(noise, bs)
         label = self.D(state)
         return label
+
+
+class VisualDiscriminator(nn.Module):
+    def __init__(self):
+        super(VisualDiscriminator, self).__init__()
+        self.conv_seq = nn.Sequential(
+            # out_size = (in_size - kernel_size + 2*padding)/stride + 1
+
+            # size: (channels, 28, 28)
+            nn.Conv2d(IM_CHANNELS, N_FILTERS, kernel_size=4, stride=2, padding=3, bias=True),
+            nn.BatchNorm2d(N_FILTERS),
+            # nn.ReLU(inplace=True),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            # size: (N_Filters, 16, 16)
+            nn.Conv2d(N_FILTERS, N_FILTERS, kernel_size=4, stride=2, padding=1, bias=True),
+            nn.BatchNorm2d(N_FILTERS),
+            # nn.ReLU(inplace=True),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            # size: (N_FILTERS, 8, 8)
+        )
+        self.fc_seq = nn.Sequential(
+            nn.Linear(N_FILTERS * 8 * 8, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        h = self.conv_seq(x)
+        out = self.fc_seq(h.view(h.size(0), -1))
+        return out
+
+
+class ConditionalVisualGenerator(nn.Module):
+    def __init__(self, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE):
+        super(ConditionalVisualGenerator, self).__init__()
+        self.fc_seq = nn.Sequential(
+            nn.Linear(bs_size + n_size, g_size),
+            nn.BatchNorm1d(g_size),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(g_size, N_FILTERS * 8 * 8),
+            nn.BatchNorm1d(N_FILTERS * 8 * 8),
+            nn.ReLU(inplace=True),
+        )
+        self.conv_seq = nn.Sequential(
+            # out_size = (in_size - kernel_size + 2*padding)/stride + 1
+
+            # size: (N_FILTERS, 8, 8)
+            nn.ConvTranspose2d(N_FILTERS, N_FILTERS, kernel_size=4, stride=2, padding=2, bias=True),
+            nn.BatchNorm2d(N_FILTERS),
+            nn.ReLU(True),
+
+            # size: (N_FILTERS, 16, 16)
+            nn.ConvTranspose2d(N_FILTERS, IM_CHANNELS, kernel_size=4, stride=2, padding=1, bias=True),
+            nn.Sigmoid(),
+
+            # size: (N_FILTERS, 8, 8)
+        )
+
+    def forward(self, noise, bs):
+        """
+
+        :param noise: should be normally distributed
+        :param bs: from state distribution (somewhat similar to uniform)
+        :return:
+        """
+        noise_joint = torch.cat([noise, bs], dim=-1)
+        h = self.fc_seq(noise_joint)
+        out = self.conv_seq(h.view(h.size(0), N_FILTERS, 8, 8))
+        return out
+
+
+class VisualPAEGAN(nn.Module):
+    def __init__(self, v_size=V_SIZE, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE):
+        super(VisualPAEGAN, self).__init__()
+        self.bs_prop = BeliefStatePropagator(v_size, bs_size)
+        self.decoder = Decoder(bs_size)
+        self.D = VisualDiscriminator()
+        self.G = ConditionalVisualGenerator(bs_size=bs_size, n_size=n_size, g_size=g_size)
+
+    def forward(self):
+        # ep_len = x.size(0)
+        # batch_size = x.size(1)
+        #
+        # h = self.bs_prop(x)
+        # obs_expectation = self.decoder(h.view(ep_len * batch_size, -1))
+        # obs_sample = self.G(h.view(ep_len * batch_size, -1))
+        #
+        # return out.view(x.size())
+        return None
 
 
 if __name__ == "__main__":

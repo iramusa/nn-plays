@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 
 import numpy as np
+import torch.nn.functional as F
 
 
 ############## autoencoder for ball sim predictions ##################
@@ -222,13 +223,16 @@ class ConditionalVisualGenerator(nn.Module):
     def __init__(self, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE):
         super(ConditionalVisualGenerator, self).__init__()
         self.fc_seq = nn.Sequential(
-            nn.Linear(bs_size + n_size, g_size),
-            nn.BatchNorm1d(g_size),
-            nn.ReLU(inplace=True),
-
-            nn.Linear(g_size, N_FILTERS * 8 * 8),
+            # nn.Linear(bs_size + n_size, g_size),
+            # nn.BatchNorm1d(g_size),
+            nn.Linear(bs_size + n_size, N_FILTERS * 8 * 8),
             nn.BatchNorm1d(N_FILTERS * 8 * 8),
-            nn.ReLU(inplace=True),
+            # nn.ReLU(inplace=True),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            # nn.Linear(g_size, N_FILTERS * 8 * 8),
+            # nn.BatchNorm1d(N_FILTERS * 8 * 8),
+            # nn.ReLU(inplace=True),
         )
         self.conv_seq = nn.Sequential(
             # out_size = (in_size - kernel_size + 2*padding)/stride + 1
@@ -236,7 +240,8 @@ class ConditionalVisualGenerator(nn.Module):
             # size: (N_FILTERS, 8, 8)
             nn.ConvTranspose2d(N_FILTERS, N_FILTERS, kernel_size=4, stride=2, padding=2, bias=True),
             nn.BatchNorm2d(N_FILTERS),
-            nn.ReLU(True),
+            # nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
 
             # size: (N_FILTERS, 16, 16)
             nn.ConvTranspose2d(N_FILTERS, IM_CHANNELS, kernel_size=4, stride=2, padding=1, bias=True),
@@ -263,8 +268,12 @@ class VisualPAEGAN(nn.Module):
         super(VisualPAEGAN, self).__init__()
         self.bs_prop = BeliefStatePropagator(v_size, bs_size)
         self.decoder = Decoder(bs_size)
-        self.D = VisualDiscriminator()
-        self.G = ConditionalVisualGenerator(bs_size=bs_size, n_size=n_size, g_size=g_size)
+        # self.D = VisualDiscriminator()
+        # self.G = ConditionalVisualGenerator(bs_size=bs_size, n_size=n_size, g_size=g_size)
+        self.D = StolenDiscriminator()
+        self.G = StolenGenerator()
+        self.D.weight_init(mean=0.0, std=0.02)
+        self.G.weight_init(mean=0.0, std=0.02)
 
     def forward(self):
         # ep_len = x.size(0)
@@ -276,6 +285,75 @@ class VisualPAEGAN(nn.Module):
         #
         # return out.view(x.size())
         return None
+
+
+def normal_init(m, mean, std):
+    if isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Conv2d):
+        m.weight.data.normal_(mean, std)
+        m.bias.data.zero_()
+
+
+class StolenGenerator(nn.Module):
+    # initializers
+    def __init__(self, d=128):
+        super(StolenGenerator, self).__init__()
+        self.deconv1 = nn.ConvTranspose2d(N_SIZE + BS_SIZE, d*8, 4, 1, 0)
+        self.deconv1_bn = nn.BatchNorm2d(d*8)
+        self.deconv2 = nn.ConvTranspose2d(d*8, d*4, 4, 2, 1)
+        self.deconv2_bn = nn.BatchNorm2d(d*4)
+        self.deconv3 = nn.ConvTranspose2d(d*4, d*2, 4, 2, 2)
+        self.deconv3_bn = nn.BatchNorm2d(d*2)
+        # self.deconv4 = nn.ConvTranspose2d(d*2, d, 4, 2, 1)
+        # self.deconv4_bn = nn.BatchNorm2d(d)
+        self.deconv5 = nn.ConvTranspose2d(d*2, 1, 4, 2, 1)
+
+    # weight_init
+    def weight_init(self, mean, std):
+        for m in self._modules:
+            normal_init(self._modules[m], mean, std)
+
+    # forward method
+    def forward(self, noise, input):
+        noise_joint = torch.cat([noise, input], dim=-1)
+        x = F.relu(self.deconv1_bn(self.deconv1(noise_joint.view(-1, N_SIZE + BS_SIZE, 1, 1))))
+        x = F.relu(self.deconv2_bn(self.deconv2(x)))
+        x = F.relu(self.deconv3_bn(self.deconv3(x)))
+        # x = F.relu(self.deconv4_bn(self.deconv4(x)))
+        x = F.sigmoid(self.deconv5(x))
+
+        return x
+
+
+class StolenDiscriminator(nn.Module):
+    # initializers
+    def __init__(self, d=128):
+        super(StolenDiscriminator, self).__init__()
+        self.conv1 = nn.Conv2d(1, d, 4, 2, 1)
+        # self.conv2 = nn.Conv2d(d, d*2, 4, 2, 1)
+        # self.conv2_bn = nn.BatchNorm2d(d*2)
+        self.conv3 = nn.Conv2d(d, d*4, 4, 2, 1)
+        self.conv3_bn = nn.BatchNorm2d(d*4)
+        self.conv4 = nn.Conv2d(d*4, d*8, 4, 2, 2)
+        self.conv4_bn = nn.BatchNorm2d(d*8)
+        self.conv5 = nn.Conv2d(d*8, 1, 4, 1, 0)
+
+    # weight_init
+    def weight_init(self, mean, std):
+        for m in self._modules:
+            normal_init(self._modules[m], mean, std)
+
+    # forward method
+    def forward(self, input):
+
+        x = F.leaky_relu(self.conv1(input), 0.2)
+        # x = F.leaky_relu(self.conv2_bn(self.conv2(x)), 0.2)
+        x = F.leaky_relu(self.conv3_bn(self.conv3(x)), 0.2)
+        x = F.leaky_relu(self.conv4_bn(self.conv4(x)), 0.2)
+
+        x = F.sigmoid(self.conv5(x))
+
+        return x
+
 
 
 if __name__ == "__main__":
@@ -293,13 +371,17 @@ if __name__ == "__main__":
     # net = PredictiveAutoencoder()
     # x = Variable(torch.randn(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
 
-    net = BeliefStateGAN()
+    # net = BeliefStateGAN()
     # net = BeliefStateGenerator()
+    G = StolenGenerator()
+    D = StolenDiscriminator()
     noise = Variable(torch.randn(BATCH_SIZE, N_SIZE))
     bs = Variable(torch.randn(BATCH_SIZE, BS_SIZE))
 
-    fake = net.G(noise, bs)
-    res = net.D(fake)
+    fake = G(noise, bs)
+    print(fake)
+
+    res = D(fake)
     print(res)
 
 

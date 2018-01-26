@@ -13,14 +13,15 @@ from torch_nets import *
 import my_utils
 
 BATCH_SIZE = 4
-GAN_BATCH_SIZE = 32
+GAN_BATCH_SIZE = 16
+AVERAGING_BATCH_SIZE = 24
 EP_LEN = 120
 GUARANTEED_PERCEPTS = 6
 UNCERTAIN_PERCEPTS = 4
-P_OBS = 0.95
+P_NO_OBS = 0.99
 EPOCHS = 225
 UPDATES_PER_EPOCH = 10000
-EXP_FOLDER = "/home/ira/code/projects/nn-play/experiments/paegan/"
+EXP_FOLDER = "/home/ira/code/projects/nn-play/experiments/paegan-stolen/"
 DATA_FOLDER = "{}/data".format(EXP_FOLDER)
 
 
@@ -183,7 +184,7 @@ def train_predictive_autoencoder():
         torch.save(net.state_dict(), '%s/autencoder_epoch_%d.pth' % (EXP_FOLDER, epoch))
 
 
-def train_PAEGAN():
+def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
     try:
         os.makedirs(EXP_FOLDER)
     except OSError:
@@ -197,24 +198,28 @@ def train_PAEGAN():
     net = VisualPAEGAN(v_size=V_SIZE, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE).cuda()
     criterion_pae = nn.MSELoss().cuda()
     criterion_gan = nn.BCELoss().cuda()
+    # criterion_gan = nn.MSELoss().cuda()
+    criterion_gen_averaged = nn.MSELoss().cuda()
     obs_in = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH).cuda())
     obs_out = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH).cuda())
 
+    averaging_noise = Variable(torch.FloatTensor(AVERAGING_BATCH_SIZE, N_SIZE).cuda())
     noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, N_SIZE).cuda())
+
     fixed_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, N_SIZE).normal_(0, 1).cuda())
     fixed_bs_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, BS_SIZE).uniform_(-1, 1).cuda())
-    label = Variable(torch.FloatTensor(GAN_BATCH_SIZE).cuda())
+    label = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1).cuda())
     real_label = 1
     fake_label = 0
 
     optimiser_pae = optim.Adam([{'params': net.bs_prop.parameters()},
                                 {'params': net.decoder.parameters()}],
-                               lr=0.0002)
-    optimiser_g = optim.Adam([{'params': net.bs_prop.parameters(), 'lr': 0.00001},
-                              {'params': net.G.parameters(), 'lr': 0.0005}])
-    optimiser_d = optim.Adam(net.D.parameters(), lr=0.0005)
+                               lr=0.0004)
+    optimiser_g = optim.Adam([{'params': net.bs_prop.parameters(), 'lr': 0.0001},
+                              {'params': net.G.parameters(), 'lr': 0.0002}])
+    optimiser_sum = optim.Adam(net.G.parameters(), lr=0.0002)
+    optimiser_d = optim.Adam(net.D.parameters(), lr=0.0002)
 
-    start_at_epoch = 2
     if start_at_epoch > 0:
         net.load_state_dict(torch.load("%s/paegan_epoch_%d.pth" % (EXP_FOLDER, start_at_epoch - 1)))
 
@@ -223,9 +228,8 @@ def train_PAEGAN():
         bar = trange(UPDATES_PER_EPOCH)
         postfix['epoch'] = '[%d/%d]' % (epoch, EPOCHS)
         for update in bar:
-
             batch = data_train.get_batch_episodes()
-            masked = mask_percepts(batch, p=P_OBS)
+            masked = mask_percepts(batch, p=P_NO_OBS)
 
             batch = batch.transpose((1, 0, 4, 2, 3))
             masked = masked.transpose((1, 0, 4, 2, 3))
@@ -242,50 +246,115 @@ def train_PAEGAN():
             states = net.bs_prop(obs_in)
             states = states.view(EP_LEN * BATCH_SIZE, -1)
 
-            # generate observation expectations, compute gradients, update
+            # generate observation expectations, compute pae gradients, update
             obs_expectation = net.decoder(states)
             obs_expectation = obs_expectation.view(obs_in.size())
 
             err_pae = criterion_pae(obs_expectation, obs_out)
             err_pae.backward(retain_graph=True)
             optimiser_pae.step()
-            net.zero_grad()
-
-            # train discriminator with real data
-            label.data.fill_(real_label)
-            obs_out_non_ep = obs_out.view(EP_LEN * BATCH_SIZE,
-                                          obs_out.size(2), obs_out.size(3), obs_out.size(4))
-
-            obs_out_non_ep = obs_out_non_ep.unfold(0, 1, (EP_LEN*BATCH_SIZE)//GAN_BATCH_SIZE).squeeze(-1)
-            states_non_ep = states.unfold(0, 1, (EP_LEN*BATCH_SIZE)//GAN_BATCH_SIZE).squeeze(-1)
-
-            out_D_real = net.D(obs_out_non_ep)
-            err_D_real = criterion_gan(out_D_real, label)
-            err_D_real.backward()
-            # D_x = out_D_real.data.mean()
-
-            noise.data.normal_(0, 1)
-            obs_sample = net.G(noise, states_non_ep)
-            label.data.fill_(fake_label)
-            out_D_fake = net.D(obs_sample.detach())
-            err_D_fake = criterion_gan(out_D_fake, label)
-            err_D_fake.backward()
-            # D_G_z1 = out_D_fake.data.mean()
-
-            err_D = err_D_fake + err_D_real
-            optimiser_d.step()
-
-            net.zero_grad()
-            label.data.fill_(real_label)
-            out_D_fake = net.D(obs_sample)
-            err_G = criterion_gan(out_D_fake, label)
-            err_G.backward()
-            # D_G_z2 = out_D_fake.data.mean()
-            optimiser_g.step()
-
             postfix['pae train loss'] = err_pae.data[0]
-            postfix['g train loss'] = err_D.data[0]
-            postfix['d train loss'] = err_G.data[0]
+
+            if train_gan is True:
+
+                # # flip labels
+                # if update % 2000 == 0:
+                #     if real_label == 1:
+                #         real_label = 0
+                #         fake_label = 1
+                #     else:
+                #         real_label = 1
+                #         fake_label = 0
+                net.zero_grad()
+                # train discriminator with real data
+                label.data.fill_(real_label)
+                obs_out_non_ep = obs_out.view(EP_LEN * BATCH_SIZE,
+                                              obs_out.size(2), obs_out.size(3), obs_out.size(4))
+
+                obs_out_non_ep = obs_out_non_ep.unfold(0, 1, (EP_LEN*BATCH_SIZE)//GAN_BATCH_SIZE).squeeze(-1)
+                states_non_ep = states.unfold(0, 1, (EP_LEN*BATCH_SIZE)//GAN_BATCH_SIZE).squeeze(-1)
+
+                out_D_real = net.D(obs_out_non_ep)
+                err_D_real = criterion_gan(out_D_real, label)
+                err_D_real.backward()
+                # D_x = out_D_real.data.mean()
+
+                # print('out_D_real', out_D_real.data)
+                # print('err_D_real', err_D_real.data[0])
+
+                # train discriminator with fake data
+                noise.data.normal_(0, 1)
+                obs_sample = net.G(noise, states_non_ep)
+                label.data.fill_(fake_label)
+                out_D_fake = net.D(obs_sample.detach())
+                err_D_fake = criterion_gan(out_D_fake, label)
+                err_D_fake.backward()
+                # D_G_z1 = out_D_fake.data.mean()
+
+                # print('out_D_fake', out_D_fake.data)
+                # print('err_D_fake', err_D_fake.data[0])
+
+                err_D = (err_D_fake + err_D_real)/2
+                optimiser_d.step()
+
+                # train generator using discriminator
+                net.zero_grad()
+                label.data.fill_(real_label)
+                out_D_fake = net.D(obs_sample)
+                # print('out d fake', out_D_fake)
+                err_G = criterion_gan(out_D_fake, label)
+                err_G.backward()
+                # D_G_z2 = out_D_fake.data.mean()
+                optimiser_g.step()
+                postfix['g train loss'] = err_G.data[0]
+                postfix['d train loss'] = err_D.data[0]
+
+                if update % 500 == 0:
+                    vutils.save_image(obs_out_non_ep.data,
+                            '%s/real_samples.png' % EXP_FOLDER,
+                            normalize=True)
+                    obs_sample = net.G(fixed_noise, fixed_bs_noise)
+                    vutils.save_image(obs_sample.data,
+                            '%s/fake_samples_epoch_%03d.png' % (EXP_FOLDER, epoch),
+                            normalize=False)
+                    obs_recon = net.decoder(fixed_bs_noise)
+                    vutils.save_image(obs_recon.data,
+                            '%s/expectation_samples_epoch_%03d.png' % (EXP_FOLDER, epoch),
+                            normalize=False)
+
+            if train_av is True:
+                net.zero_grad()
+                # train generator using averaging
+                # pull a 50th state from 0th episode in the last batch
+                state = states[50:51, ...]
+                # print('state size', state.size())
+                state = state.expand(AVERAGING_BATCH_SIZE, -1)
+                # print('state size', state.size())
+                # get corresponding observation expectation
+                obs_exp = obs_expectation[50:51, 0, ...]
+                # print('obs size', obs_exp.size())
+
+                # generate samples from state
+                averaging_noise.data.normal_(0, 1)
+                n_samples = net.G(averaging_noise, state.detach())
+                # print('samples size', n_samples.size())
+
+                sample_av = n_samples.mean(dim=0)
+                sample_av = sample_av.unsqueeze(0)
+                # print('samples av size', sample_av.size())
+                # print('obs_exp size', obs_exp.size())
+
+                err_sum = criterion_gen_averaged(sample_av, obs_exp.detach())
+                err_sum.backward()
+                optimiser_sum.step()
+                postfix['sum train loss'] = err_sum.data[0]
+
+                if update % 100 == 0:
+                    sample_mixture = sample_av.data.cpu().numpy()
+                    observation_belief = obs_exp.data.cpu().numpy()
+                    joint = np.concatenate((observation_belief, sample_mixture), axis=-2)
+                    joint = np.expand_dims(joint, axis=0)
+                    my_utils.batch_to_sequence(joint, fpath='%s/training_sum_%03d.gif' % (EXP_FOLDER, epoch))
 
             if update % 500 == 0:
                 recon_ims = obs_expectation.data.cpu().numpy()
@@ -295,7 +364,8 @@ def train_PAEGAN():
 
             if update % 10 == 0:
                 batch = data_test.get_batch_episodes()
-                masked = mask_percepts(batch, p=P_OBS)
+                # masked = mask_percepts(batch, p=P_NO_OBS)
+                masked = mask_percepts(batch, p=1)
 
                 masked = masked.transpose((1, 0, 4, 2, 3))
                 masked = torch.FloatTensor(masked)
@@ -310,20 +380,6 @@ def train_PAEGAN():
                 obs_expectation = obs_expectation.view(obs_in.size())
                 err_pae = criterion_pae(obs_expectation, obs_out)
                 postfix['pae valid loss'] = err_pae.data[0]
-
-            if update % 100 == 0:
-                vutils.save_image(obs_out_non_ep.data,
-                        '%s/real_samples.png' % EXP_FOLDER,
-                        normalize=True)
-                obs_sample = net.G(fixed_noise, fixed_bs_noise)
-                vutils.save_image(obs_sample.data,
-                        '%s/fake_samples_epoch_%03d.png' % (EXP_FOLDER, epoch),
-                        normalize=False)
-                obs_recon = net.decoder(fixed_bs_noise)
-                vutils.save_image(obs_recon.data,
-                        '%s/expectation_samples_epoch_%03d.png' % (EXP_FOLDER, epoch),
-                        normalize=False)
-
 
             if update % 500 == 0:
                 recon_ims = obs_expectation.data.cpu().numpy()
@@ -376,7 +432,7 @@ def save_crisp_states():
     np.save("{}/crisp_states.npy".format(DATA_FOLDER), real_states)
 
 
-def train_GAN():
+def train_GAN(start_at_epoch=0):
 
     # get data
     states = np.load("{}/crisp_states.npy".format(DATA_FOLDER))

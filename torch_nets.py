@@ -268,12 +268,20 @@ class VisualPAEGAN(nn.Module):
         super(VisualPAEGAN, self).__init__()
         self.bs_prop = BeliefStatePropagator(v_size, bs_size)
         self.decoder = Decoder(bs_size)
+
+        # version 1
         # self.D = VisualDiscriminator()
         # self.G = ConditionalVisualGenerator(bs_size=bs_size, n_size=n_size, g_size=g_size)
+
+        # version stolen
+        # self.D = StolenDiscriminator()
+        # self.G = StolenGenerator()
+        # self.D.weight_init(mean=0.0, std=0.02)
+        # self.G.weight_init(mean=0.0, std=0.02)
+
+        # version state gen
         self.D = StolenDiscriminator()
-        self.G = StolenGenerator()
-        self.D.weight_init(mean=0.0, std=0.02)
-        self.G.weight_init(mean=0.0, std=0.02)
+        self.G = BeliefStateGenerator()
 
     def forward(self):
         # ep_len = x.size(0)

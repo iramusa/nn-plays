@@ -21,7 +21,7 @@ UNCERTAIN_PERCEPTS = 4
 P_NO_OBS = 0.99
 EPOCHS = 225
 UPDATES_PER_EPOCH = 10000
-EXP_FOLDER = "/home/ira/code/projects/nn-play/experiments/paegan-stolen/"
+EXP_FOLDER = "/home/ira/code/projects/nn-play/experiments/paegan-state/"
 DATA_FOLDER = "{}/data".format(EXP_FOLDER)
 
 
@@ -200,6 +200,7 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
     criterion_gan = nn.BCELoss().cuda()
     # criterion_gan = nn.MSELoss().cuda()
     criterion_gen_averaged = nn.MSELoss().cuda()
+
     obs_in = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH).cuda())
     obs_out = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH).cuda())
 
@@ -215,8 +216,9 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
     optimiser_pae = optim.Adam([{'params': net.bs_prop.parameters()},
                                 {'params': net.decoder.parameters()}],
                                lr=0.0004)
-    optimiser_g = optim.Adam([{'params': net.bs_prop.parameters(), 'lr': 0.0001},
-                              {'params': net.G.parameters(), 'lr': 0.0002}])
+    # optimiser_g = optim.Adam([{'params': net.bs_prop.parameters(), 'lr': 0.0001},
+    #                           {'params': net.G.parameters(), 'lr': 0.0002}])
+    optimiser_g = optim.Adam(net.G.parameters(), lr=0.0002)
     optimiser_sum = optim.Adam(net.G.parameters(), lr=0.0002)
     optimiser_d = optim.Adam(net.D.parameters(), lr=0.0002)
 
@@ -285,6 +287,7 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
                 # train discriminator with fake data
                 noise.data.normal_(0, 1)
                 obs_sample = net.G(noise, states_non_ep)
+                obs_sample = net.decoder(obs_sample)
                 label.data.fill_(fake_label)
                 out_D_fake = net.D(obs_sample.detach())
                 err_D_fake = criterion_gan(out_D_fake, label)
@@ -299,6 +302,28 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
 
                 # train generator using discriminator
                 net.zero_grad()
+
+                batch = data_train.get_batch_episodes()
+                masked = mask_percepts(batch, p=P_NO_OBS)
+
+                batch = batch.transpose((1, 0, 4, 2, 3))
+                masked = masked.transpose((1, 0, 4, 2, 3))
+
+                batch = torch.FloatTensor(batch)
+                masked = torch.FloatTensor(masked)
+
+                obs_in.data.copy_(masked)
+                obs_out.data.copy_(batch)
+
+                # generate beliefs states
+                states = net.bs_prop(obs_in)
+                states = states.view(EP_LEN * BATCH_SIZE, -1)
+                states_non_ep = states.unfold(0, 1, (EP_LEN*BATCH_SIZE)//GAN_BATCH_SIZE).squeeze(-1)
+
+                noise.data.normal_(0, 1)
+                obs_sample = net.G(noise, states_non_ep)
+                obs_sample = net.decoder(obs_sample)
+
                 label.data.fill_(real_label)
                 out_D_fake = net.D(obs_sample)
                 # print('out d fake', out_D_fake)

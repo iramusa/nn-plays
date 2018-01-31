@@ -184,7 +184,7 @@ def train_predictive_autoencoder():
         torch.save(net.state_dict(), '%s/autencoder_epoch_%d.pth' % (EXP_FOLDER, epoch))
 
 
-def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
+def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True, n_epochs=EPOCHS):
     try:
         os.makedirs(EXP_FOLDER)
     except OSError:
@@ -195,21 +195,39 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
     data_train.populate_images()
     data_test.populate_images()
 
-    net = VisualPAEGAN(v_size=V_SIZE, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE).cuda()
-    criterion_pae = nn.MSELoss().cuda()
-    criterion_gan = nn.BCELoss().cuda()
-    # criterion_gan = nn.MSELoss().cuda()
-    criterion_gen_averaged = nn.MSELoss().cuda()
+    if torch.cuda.is_available():
+        net = VisualPAEGAN(v_size=V_SIZE, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE).cuda()
+        criterion_pae = nn.MSELoss().cuda()
+        criterion_gan = nn.BCELoss().cuda()
+        # criterion_gan = nn.MSELoss().cuda()
+        criterion_gen_averaged = nn.MSELoss().cuda()
 
-    obs_in = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH).cuda())
-    obs_out = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH).cuda())
+        obs_in = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH).cuda())
+        obs_out = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH).cuda())
 
-    averaging_noise = Variable(torch.FloatTensor(AVERAGING_BATCH_SIZE, N_SIZE).cuda())
-    noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, N_SIZE).cuda())
+        averaging_noise = Variable(torch.FloatTensor(AVERAGING_BATCH_SIZE, N_SIZE).cuda())
+        noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, N_SIZE).cuda())
 
-    fixed_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, N_SIZE).normal_(0, 1).cuda())
-    fixed_bs_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, BS_SIZE).uniform_(-1, 1).cuda())
-    label = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1).cuda())
+        fixed_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, N_SIZE).normal_(0, 1).cuda())
+        fixed_bs_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, BS_SIZE).uniform_(-1, 1).cuda())
+        label = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1).cuda())
+    else:
+        net = VisualPAEGAN(v_size=V_SIZE, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE)
+        criterion_pae = nn.MSELoss()
+        criterion_gan = nn.BCELoss()
+        # criterion_gan = nn.MSELoss()
+        criterion_gen_averaged = nn.MSELoss()
+
+        obs_in = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
+        obs_out = Variable(torch.FloatTensor(EP_LEN, BATCH_SIZE, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
+
+        averaging_noise = Variable(torch.FloatTensor(AVERAGING_BATCH_SIZE, N_SIZE))
+        noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, N_SIZE))
+
+        fixed_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, N_SIZE).normal_(0, 1))
+        fixed_bs_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, BS_SIZE).uniform_(-1, 1))
+        label = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1))
+
     real_label = 1
     fake_label = 0
 
@@ -226,7 +244,7 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
         net.load_state_dict(torch.load("%s/paegan_epoch_%d.pth" % (EXP_FOLDER, start_at_epoch - 1)))
 
     postfix = {}
-    for epoch in range(start_at_epoch, EPOCHS):
+    for epoch in range(start_at_epoch, n_epochs):
         bar = trange(UPDATES_PER_EPOCH)
         postfix['epoch'] = '[%d/%d]' % (epoch, EPOCHS)
         for update in bar:
@@ -339,6 +357,7 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True):
                             '%s/real_samples.png' % EXP_FOLDER,
                             normalize=True)
                     obs_sample = net.G(fixed_noise, fixed_bs_noise)
+                    obs_sample = net.decoder(obs_sample)
                     vutils.save_image(obs_sample.data,
                             '%s/fake_samples_epoch_%03d.png' % (EXP_FOLDER, epoch),
                             normalize=False)

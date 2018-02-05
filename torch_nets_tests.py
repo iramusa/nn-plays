@@ -18,7 +18,7 @@ AVERAGING_BATCH_SIZE = 24
 EP_LEN = 120
 GUARANTEED_PERCEPTS = 6
 UNCERTAIN_PERCEPTS = 4
-P_NO_OBS = 0.99
+P_NO_OBS = 0.75
 EPOCHS = 225
 UPDATES_PER_EPOCH = 10000
 EXP_FOLDER = "/home/ira/code/projects/nn-play/experiments/paegan-state/"
@@ -276,6 +276,7 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True, n_epochs=EPOCH
             postfix['pae train loss'] = err_pae.data[0]
 
             if train_gan is True:
+                net.zero_grad()
 
                 # # flip labels
                 # if update % 2000 == 0:
@@ -285,7 +286,6 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True, n_epochs=EPOCH
                 #     else:
                 #         real_label = 1
                 #         fake_label = 0
-                net.zero_grad()
                 # train discriminator with real data
                 label.data.fill_(real_label)
                 obs_out_non_ep = obs_out.view(EP_LEN * BATCH_SIZE,
@@ -406,10 +406,10 @@ def train_PAEGAN(start_at_epoch=0, train_gan=True, train_av=True, n_epochs=EPOCH
                 joint = np.concatenate((target_ims, recon_ims), axis=-2)
                 my_utils.batch_to_sequence(joint, fpath='%s/training_recon_%03d.gif' % (EXP_FOLDER, epoch))
 
-            if update % 10 == 0:
+            if update % 100 == 0:
                 batch = data_test.get_batch_episodes()
-                # masked = mask_percepts(batch, p=P_NO_OBS)
-                masked = mask_percepts(batch, p=1)
+                masked = mask_percepts(batch, p=P_NO_OBS)
+                # masked = mask_percepts(batch, p=1)
 
                 masked = masked.transpose((1, 0, 4, 2, 3))
                 masked = torch.FloatTensor(masked)

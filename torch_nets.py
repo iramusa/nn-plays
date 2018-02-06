@@ -363,6 +363,102 @@ class StolenDiscriminator(nn.Module):
         return x
 
 
+TS_RECON = 'time series reconstruction'
+GAN = 'gan'
+OBS_SAMPLE_AV = 'observable averaging of samples'
+TS_SAMPLE_AV = 'full averaging of samples'
+
+
+class PAEGAN(nn.Module):
+    def __init__(self, v_size=V_SIZE, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE):
+        super(PAEGAN, self).__init__()
+
+        # POSSIBLE NETWORK COMPUTATIONS
+        self.computations_switch = {
+            TS_RECON: False,  # time series reconstruction
+            GAN: False,  # observation generation
+            OBS_SAMPLE_AV: False,  # averaging observable part of state samples
+            TS_SAMPLE_AV: False,  # averaging entirety of state samples
+        }
+
+        self.encoder = Encoder(v_size)
+        self.gru = nn.GRU(v_size, bs_size, num_layers=1)
+        self.decoder = Decoder(bs_size)
+        self.D = StolenDiscriminator()
+        self.G = BeliefStateGenerator()
+
+        # self.gan_noise = Variable(torch.FloatTensor(1, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
+        # self.averaging_noise = Variable(torch.FloatTensor(1, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
+        # self.null_image = Variable(torch.FloatTensor(1, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
+        # self.null_measurement
+
+        if torch.cuda.is_available():
+            self.null_image.cuda()
+            self.cuda()
+
+
+        #self.bs_prop = BeliefStatePropagator(v_size, bs_size)
+
+        # version 1
+        # self.D = VisualDiscriminator()
+        # self.G = ConditionalVisualGenerator(bs_size=bs_size, n_size=n_size, g_size=g_size)
+
+        # version stolen
+        # self.D = StolenDiscriminator()
+        # self.G = StolenGenerator()
+        # self.D.weight_init(mean=0.0, std=0.02)
+        # self.G.weight_init(mean=0.0, std=0.02)
+
+    def propagate_states(self, ts):
+        ep_len = ts.size(0)
+        batch_size = ts.size(1)
+
+        h = self.encoder(ts.view(ep_len * batch_size, ts.size(2), ts.size(3), ts.size(4)))
+        states, state_f = self.gru(h.view(ep_len, batch_size, -1))
+        return states
+
+    def blind_propagate_states(self, state_0, n_timesteps):
+        """
+        Propagate belief states without sensory update
+        :param state_0: initial states
+        :param n_timesteps: for how many timesteps?
+        :return: states: (n_timesteps, n_samples, bs_size)
+        """
+        # encoding of measurement which corresponds to null image
+        null_encoding = self.encoder(self.null_image)
+        if self.null_encoding.size(0) != n_timesteps:
+            # self.null_encoding = torch.expand(null_encoding)
+            pass
+
+        if null_encoding != self.null_encoding[:,:, ...]:
+            self.null_encoding[:, :, ...] = null_encoding
+
+        states, state_f = self.gru(self.null_encoding)
+        return states
+
+    def visualise_states(self, states):
+        return self.decoder(states)
+
+    def ts_reconstruction(self, states, ep_len, batch_size):
+        self.visualise_states(states).view(ep_len, batch_size, IM_CHANNELS, IM_WIDTH, IM_WIDTH)
+
+    def sample_single_state(self, state, n_samples):
+        pass
+
+    def sample_many_states(self, states):
+        pass
+
+    def forward(self):
+        # ep_len = x.size(0)
+        # batch_size = x.size(1)
+        #
+        # h = self.bs_prop(x)
+        # obs_expectation = self.decoder(h.view(ep_len * batch_size, -1))
+        # obs_sample = self.G(h.view(ep_len * batch_size, -1))
+        #
+        # return out.view(x.size())
+        return None
+
 
 if __name__ == "__main__":
     BATCH_SIZE = 32

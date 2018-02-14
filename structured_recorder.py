@@ -37,9 +37,12 @@ class Record(object):
         self.record = {}
         self.record.update(kwargs)
 
-        self.filename = '{0}-{1}.pt'.format(kwargs['sim_type'],
+        self.filename = '{1}.pt'.format(kwargs['sim_type'],
                                             kwargs['train'])
         self.filepath = os.path.join(kwargs['folder'], self.filename)
+
+        filename_sim_config = '{}.conf'.format(kwargs['train'])
+        self.filepath_sim_config = os.path.join(kwargs['folder'], filename_sim_config)
 
         self.n_episodes = kwargs['n_episodes']
         self.ep_length = kwargs['episode_length']
@@ -86,6 +89,8 @@ class Record(object):
         # data = np.array(self.ep_list)
         print('Writing', filepath)
         torch.save(self.record, open(filepath, 'wb'))
+        torch.save(simulation_config, open(self.filepath_sim_config, 'wb'))
+
 
 
 if __name__ == '__main__':

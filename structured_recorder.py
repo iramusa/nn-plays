@@ -10,17 +10,17 @@ import torch
 simulation_config = {
     'n_bodies': 1,
     'radius_mode': 'uniform',
-    'radius': 3.5,
+    'radius': 2.0,
     'mass_mode': 'uniform',
     'mass': 1.0,
-    'wall_action': 'bounce',
+    'wall_action': 'pass',
     'ball_action': 'pass',
-    'measurement_noise': 0.0,
-    'dynamics_noise': 0.001,
+    'measurement_noise': 0.0003,
+    'dynamics_noise': 0.01,
 }
 
 record_config = {
-    'sim_type': 'bounce',
+    'sim_type': 'simple',
     'sim_config': simulation_config,
     'train': 'train',
     # 'train': 'valid',

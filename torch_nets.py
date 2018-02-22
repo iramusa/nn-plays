@@ -409,11 +409,11 @@ class PAEGAN(nn.Module):
         # self.D.weight_init(mean=0.0, std=0.02)
         # self.G.weight_init(mean=0.0, std=0.02)
 
-    def propagate_states(self, ts):
-        ep_len = ts.size(0)
-        batch_size = ts.size(1)
+    def propagate_states(self, observations):
+        ep_len = observations.size(0)
+        batch_size = observations.size(1)
 
-        h = self.encoder(ts.view(ep_len * batch_size, ts.size(2), ts.size(3), ts.size(4)))
+        h = self.encoder(observations.view(ep_len * batch_size, observations.size(2), observations.size(3), observations.size(4)))
         states, state_f = self.gru(h.view(ep_len, batch_size, -1))
         return states
 

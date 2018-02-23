@@ -374,15 +374,17 @@ class PAEGAN(nn.Module):
         super(PAEGAN, self).__init__()
 
         # POSSIBLE NETWORK COMPUTATIONS
-        self.computations_switch = {
-            TS_RECON: False,  # time series reconstruction
-            GAN: False,  # observation generation
-            OBS_SAMPLE_AV: False,  # averaging observable part of state samples
-            TS_SAMPLE_AV: False,  # averaging entirety of state samples
-        }
+        # self.computations_switch = {
+        #     TS_RECON: False,  # time series reconstruction
+        #     GAN: False,  # observation generation
+        #     OBS_SAMPLE_AV: False,  # averaging observable part of state samples
+        #     TS_SAMPLE_AV: False,  # averaging entirety of state samples
+        # }
 
-        self.encoder = Encoder(v_size)
-        self.gru = nn.GRU(v_size, bs_size, num_layers=1)
+        # self.encoder = Encoder(v_size)
+        # self.gru = nn.GRU(v_size, bs_size, num_layers=1)
+
+        self.bs_prop = BeliefStatePropagator()
         self.decoder = Decoder(bs_size)
         self.D = StolenDiscriminator()
         self.G = BeliefStateGenerator()
@@ -392,9 +394,9 @@ class PAEGAN(nn.Module):
         # self.null_image = Variable(torch.FloatTensor(1, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
         # self.null_measurement
 
-        if torch.cuda.is_available():
-            self.null_image.cuda()
-            self.cuda()
+        # if torch.cuda.is_available():
+        #     self.null_image.cuda()
+        #     self.cuda()
 
 
         #self.bs_prop = BeliefStatePropagator(v_size, bs_size)
@@ -408,45 +410,45 @@ class PAEGAN(nn.Module):
         # self.G = StolenGenerator()
         # self.D.weight_init(mean=0.0, std=0.02)
         # self.G.weight_init(mean=0.0, std=0.02)
-
-    def propagate_states(self, observations):
-        ep_len = observations.size(0)
-        batch_size = observations.size(1)
-
-        h = self.encoder(observations.view(ep_len * batch_size, observations.size(2), observations.size(3), observations.size(4)))
-        states, state_f = self.gru(h.view(ep_len, batch_size, -1))
-        return states
-
-    def blind_propagate_states(self, state_0, n_timesteps):
-        """
-        Propagate belief states without sensory update
-        :param state_0: initial states
-        :param n_timesteps: for how many timesteps?
-        :return: states: (n_timesteps, n_samples, bs_size)
-        """
-        # encoding of measurement which corresponds to null image
-        null_encoding = self.encoder(self.null_image)
-        if self.null_encoding.size(0) != n_timesteps:
-            # self.null_encoding = torch.expand(null_encoding)
-            pass
-
-        if null_encoding != self.null_encoding[:,:, ...]:
-            self.null_encoding[:, :, ...] = null_encoding
-
-        states, state_f = self.gru(self.null_encoding)
-        return states
-
-    def visualise_states(self, states):
-        return self.decoder(states)
-
-    def ts_reconstruction(self, states, ep_len, batch_size):
-        self.visualise_states(states).view(ep_len, batch_size, IM_CHANNELS, IM_WIDTH, IM_WIDTH)
-
-    def sample_single_state(self, state, n_samples):
-        pass
-
-    def sample_many_states(self, states):
-        pass
+    #
+    # def propagate_states(self, observations):
+    #     ep_len = observations.size(0)
+    #     batch_size = observations.size(1)
+    #
+    #     h = self.encoder(observations.view(ep_len * batch_size, observations.size(2), observations.size(3), observations.size(4)))
+    #     states, state_f = self.gru(h.view(ep_len, batch_size, -1))
+    #     return states
+    #
+    # def blind_propagate_states(self, state_0, n_timesteps):
+    #     """
+    #     Propagate belief states without sensory update
+    #     :param state_0: initial states
+    #     :param n_timesteps: for how many timesteps?
+    #     :return: states: (n_timesteps, n_samples, bs_size)
+    #     """
+    #     # encoding of measurement which corresponds to null image
+    #     null_encoding = self.encoder(self.null_image)
+    #     if self.null_encoding.size(0) != n_timesteps:
+    #         # self.null_encoding = torch.expand(null_encoding)
+    #         pass
+    #
+    #     if null_encoding != self.null_encoding[:,:, ...]:
+    #         self.null_encoding[:, :, ...] = null_encoding
+    #
+    #     states, state_f = self.gru(self.null_encoding)
+    #     return states
+    #
+    # def visualise_states(self, states):
+    #     return self.decoder(states)
+    #
+    # def ts_reconstruction(self, states, ep_len, batch_size):
+    #     self.visualise_states(states).view(ep_len, batch_size, IM_CHANNELS, IM_WIDTH, IM_WIDTH)
+    #
+    # def sample_single_state(self, state, n_samples):
+    #     pass
+    #
+    # def sample_many_states(self, states):
+    #     pass
 
     def forward(self):
         # ep_len = x.size(0)

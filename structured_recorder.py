@@ -24,8 +24,8 @@ record_config = {
     'sim_config': simulation_config,
     'train': 'train',
     # 'train': 'valid',
-    # 'n_episodes': 500,
-    'n_episodes': 1000,
+    'n_episodes': 100,
+    # 'n_episodes': 1000,
     'episode_length': 100,
     'folder': 'data-balls/',
     'random_seed': 0
@@ -50,7 +50,10 @@ class Record(object):
 
         self.record.update({'episodes': self.all_eps})
 
-        np.random.seed(kwargs['random_seed'])
+        if kwargs['train'] == 'train':
+            np.random.seed(kwargs['random_seed'])
+        else:
+            np.random.seed(kwargs['random_seed'] + 1000)
 
     def run(self):
         sim_config = self.record['sim_config']

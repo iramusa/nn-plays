@@ -14,10 +14,11 @@ import torch_nets
 
 PAE_BATCH_SIZE = 4
 GAN_BATCH_SIZE = 16
-AVERAGING_BATCH_SIZE = 32
+AVERAGING_BATCH_SIZE = 16
 EP_LEN = 100
 
 AVERAGING_ERROR_MULTIPLIER = 1000
+AVERAGE_N_STEPS_AHEAD = 3
 
 BALLS_OBS_SHAPE = (1, 28, 28)
 
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument('--updates_per_epoch', default=3000, type=int,
                         help="How many updates per epoch?")
     parser.add_argument('--training_stage', type=str,
-                        choices=['pae', 'paegan', 'paegan-sampler', 'sampler', 'averager', 'd-sampler'],
+                        choices=['pae', 'paegan-sampler', 'sampler', 'averager', 'future-sampler'],
                         help="Different training modes enable training of different parts of the network")
     parser.add_argument('--p_mask', default=0.99, type=float,
                         help="What fraction of input observations is masked? eg 0.6")
@@ -65,27 +66,30 @@ if __name__ == "__main__":
     p_mask = args.p_mask
     train_d_every_n_updates = 1
 
+    train_pae_switch = False
+    train_d_switch = False
+    train_g_switch = False
+    train_av_switch = False
+    train_av_future_switch = False
+
     if training_stage == "pae":
         train_pae_switch = True
         train_d_switch = False
         train_g_switch = False
         train_av_switch = False
-    elif training_stage == "paegan":
-        train_pae_switch = False
-        train_d_switch = True
-        train_g_switch = True
-        train_av_switch = True
-    elif training_stage == "d-sampler":
-        train_pae_switch = False
-        train_d_switch = True
-        train_g_switch = True
-        train_av_switch = True
     elif training_stage == "sampler":
         train_d_every_n_updates = 5
         train_pae_switch = False
         train_d_switch = True
         train_g_switch = True
         train_av_switch = True
+    elif training_stage == "future-sampler":
+        train_d_every_n_updates = 5
+        train_pae_switch = False
+        train_d_switch = True
+        train_g_switch = True
+        train_av_switch = True
+        train_av_future_switch = False
     elif training_stage == "averager":
         train_pae_switch = False
         train_d_switch = False
@@ -163,6 +167,7 @@ if __name__ == "__main__":
         fixed_bs_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, bs_size).uniform_(-1, 1).cuda())
         fake_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1).cuda())
         real_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1).cuda())
+        null_observation = Variable(torch.FloatTensor(AVERAGING_BATCH_SIZE, *BALLS_OBS_SHAPE).cuda())
     else:
         criterion_pae = nn.MSELoss()
         criterion_gan = nn.BCELoss()
@@ -179,6 +184,9 @@ if __name__ == "__main__":
         fixed_bs_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, bs_size).uniform_(-1, 1))
         fake_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1))
         real_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1))
+        null_observation = Variable(torch.FloatTensor(AVERAGING_BATCH_SIZE, *BALLS_OBS_SHAPE))
+
+    null_observation.data.fill_(0)
 
     # optimisers
     optimiser_pae = optim.Adam([{'params': net.bs_prop.parameters()},
@@ -299,7 +307,7 @@ if __name__ == "__main__":
                 # draw random states
                 draw = np.random.choice(EP_LEN * PAE_BATCH_SIZE, size=1, replace=False)
                 states_av = states_nonep[draw, ...]
-                states_av = states_av.expand(AVERAGING_BATCH_SIZE, -1)
+                states_av_expanded = states_av.expand(AVERAGING_BATCH_SIZE, -1)
 
                 # get corresponding observation expectation
                 obs_exp_nonep = obs_expectation.view(EP_LEN * PAE_BATCH_SIZE,
@@ -308,7 +316,7 @@ if __name__ == "__main__":
 
                 # generate samples from state
                 averaging_noise.data.normal_(0, 1)
-                n_samples = net.G(averaging_noise, states_av.detach())
+                n_samples = net.G(averaging_noise, states_av_expanded.detach())
 
                 n_samples = net.decoder(n_samples)
                 # print('samples size', n_samples.size())
@@ -322,12 +330,44 @@ if __name__ == "__main__":
                 losses.append(AVERAGING_ERROR_MULTIPLIER * err_av)
                 epoch_report['av train loss'] = err_av.data[0]
 
-                if update % 10 == 0:
+                if update % 50 == 0:
                     sample_mixture = sample_av.data.cpu().numpy()
                     observation_belief = obs_exp.data.cpu().numpy()
                     joint = np.concatenate((observation_belief, sample_mixture), axis=-2)
                     joint = np.expand_dims(joint, axis=0)
-                    torch_utils.batch_to_sequence(joint, fpath='{}/images/sum_{}.gif'.format(output_dir, current_epoch))
+                    torch_utils.batch_to_sequence(joint, fpath='{}/images/sample_av_{}.gif'.format(output_dir, current_epoch))
+
+                if train_av_future_switch is True:
+                    assert train_pae_switch is False
+                    # get null update (from null observation)
+                    null_update = net.bs_prop.encoder(null_observation).detach()
+                    null_update_expanded1 = null_update.expand(AVERAGE_N_STEPS_AHEAD, 1, -1)
+                    null_update_expanded2 = null_update.expand(AVERAGE_N_STEPS_AHEAD, AVERAGING_BATCH_SIZE, -1)
+
+                    # propagate belief in time
+                    _, future_belief = net.bs_prop.gru(null_update_expanded1, hx=states_av)
+                    future_exp = net.decoder(future_belief)
+
+                    # propagate samples in time
+                    _, future_samples = net.bs_prop.gru(null_update_expanded2, hx=n_samples)
+                    future_recons = net.decoder(future_samples)
+
+                    future_av = future_recons.mean(dim=0).unsqueeze(0)
+
+                    err_future_av = criterion_gen_averaged(future_av, future_exp.detach())
+
+                    # normalise error to ~1
+
+                    losses.append(AVERAGING_ERROR_MULTIPLIER * err_av)
+                    epoch_report['av train loss'] = err_av.data[0]
+
+                    if update % 50 == 0:
+                        sample_mixture = future_av.data.cpu().numpy()
+                        observation_belief = future_exp.data.cpu().numpy()
+                        joint = np.concatenate((observation_belief, sample_mixture), axis=-2)
+                        joint = np.expand_dims(joint, axis=0)
+                        torch_utils.batch_to_sequence(joint,
+                                                      fpath='{}/images/future_av_{}.gif'.format(output_dir, current_epoch))
 
             # =====================================
             # UPDATE WEIGHTS HERE!

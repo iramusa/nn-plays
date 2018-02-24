@@ -373,51 +373,10 @@ class PAEGAN(nn.Module):
     def __init__(self, v_size=V_SIZE, bs_size=BS_SIZE, n_size=N_SIZE, g_size=G_SIZE):
         super(PAEGAN, self).__init__()
 
-        # POSSIBLE NETWORK COMPUTATIONS
-        # self.computations_switch = {
-        #     TS_RECON: False,  # time series reconstruction
-        #     GAN: False,  # observation generation
-        #     OBS_SAMPLE_AV: False,  # averaging observable part of state samples
-        #     TS_SAMPLE_AV: False,  # averaging entirety of state samples
-        # }
-
-        # self.encoder = Encoder(v_size)
-        # self.gru = nn.GRU(v_size, bs_size, num_layers=1)
-
         self.bs_prop = BeliefStatePropagator()
         self.decoder = Decoder(bs_size)
         self.D = StolenDiscriminator()
         self.G = BeliefStateGenerator()
-
-        # self.gan_noise = Variable(torch.FloatTensor(1, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
-        # self.averaging_noise = Variable(torch.FloatTensor(1, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
-        # self.null_image = Variable(torch.FloatTensor(1, IM_CHANNELS, IM_WIDTH, IM_WIDTH))
-        # self.null_measurement
-
-        # if torch.cuda.is_available():
-        #     self.null_image.cuda()
-        #     self.cuda()
-
-
-        #self.bs_prop = BeliefStatePropagator(v_size, bs_size)
-
-        # version 1
-        # self.D = VisualDiscriminator()
-        # self.G = ConditionalVisualGenerator(bs_size=bs_size, n_size=n_size, g_size=g_size)
-
-        # version stolen
-        # self.D = StolenDiscriminator()
-        # self.G = StolenGenerator()
-        # self.D.weight_init(mean=0.0, std=0.02)
-        # self.G.weight_init(mean=0.0, std=0.02)
-    #
-    # def propagate_states(self, observations):
-    #     ep_len = observations.size(0)
-    #     batch_size = observations.size(1)
-    #
-    #     h = self.encoder(observations.view(ep_len * batch_size, observations.size(2), observations.size(3), observations.size(4)))
-    #     states, state_f = self.gru(h.view(ep_len, batch_size, -1))
-    #     return states
     #
     # def blind_propagate_states(self, state_0, n_timesteps):
     #     """

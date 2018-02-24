@@ -17,8 +17,9 @@ GAN_BATCH_SIZE = 16
 AVERAGING_BATCH_SIZE = 16
 EP_LEN = 100
 
-AVERAGING_ERROR_MULTIPLIER = 1000
-AVERAGE_N_STEPS_AHEAD = 3
+AVERAGING_ERROR_MULTIPLIER = 500
+AVERAGING_FUTURE_ERROR_MULTIPLIER = 200
+AVERAGE_N_STEPS_AHEAD = 4
 
 BALLS_OBS_SHAPE = (1, 28, 28)
 
@@ -65,6 +66,7 @@ if __name__ == "__main__":
     use_cuda = args.cuda
     p_mask = args.p_mask
     train_d_every_n_updates = 1
+    compare_with_pf = args.compare_with_pf
 
     train_pae_switch = False
     train_d_switch = False
@@ -88,8 +90,8 @@ if __name__ == "__main__":
         train_pae_switch = False
         train_d_switch = True
         train_g_switch = True
-        train_av_switch = True
-        train_av_future_switch = False
+        train_av_switch = False
+        train_av_future_switch = True
     elif training_stage == "averager":
         train_pae_switch = False
         train_d_switch = False
@@ -113,7 +115,8 @@ if __name__ == "__main__":
         sim_config = torch.load('{}/train.conf'.format(args.data_dir))
         obs_shape = BALLS_OBS_SHAPE
 
-        train_container = DataContainer('{}/train.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
+        # train_container = DataContainer('{}/train.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
+        train_container = DataContainer('{}/valid.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
         valid_container = DataContainer('{}/valid.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
         sim_config = torch.load(open('{}/train.conf'.format(args.data_dir), 'rb'))
 
@@ -126,7 +129,7 @@ if __name__ == "__main__":
     else:
         raise ValueError('Failed to load data. Wrong dataset type {}'.format(args.dataset_type))
 
-    if args.compare_with_pf:
+    if compare_with_pf:
         assert sim_config is not None
 
     # prepare network
@@ -167,7 +170,7 @@ if __name__ == "__main__":
         fixed_bs_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, bs_size).uniform_(-1, 1).cuda())
         fake_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1).cuda())
         real_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1).cuda())
-        null_observation = Variable(torch.FloatTensor(AVERAGING_BATCH_SIZE, *BALLS_OBS_SHAPE).cuda())
+        null_observation = Variable(torch.FloatTensor(1, *BALLS_OBS_SHAPE).cuda())
     else:
         criterion_pae = nn.MSELoss()
         criterion_gan = nn.BCELoss()
@@ -184,7 +187,7 @@ if __name__ == "__main__":
         fixed_bs_noise = Variable(torch.FloatTensor(GAN_BATCH_SIZE, bs_size).uniform_(-1, 1))
         fake_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1))
         real_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1))
-        null_observation = Variable(torch.FloatTensor(AVERAGING_BATCH_SIZE, *BALLS_OBS_SHAPE))
+        null_observation = Variable(torch.FloatTensor(1, *BALLS_OBS_SHAPE))
 
     null_observation.data.fill_(0)
 
@@ -201,7 +204,6 @@ if __name__ == "__main__":
     epoch_report = {}
     until_epoch = current_epoch + n_epochs
     for current_epoch in range(current_epoch, until_epoch):
-        torch_utils.pf_comparison(net, sim_config, output_dir, current_epoch)
 
         bar = tqdm.trange(updates_per_epoch)
         epoch_report['epoch'] = '[{}/{}]'.format(current_epoch, until_epoch)
@@ -271,7 +273,7 @@ if __name__ == "__main__":
                 err_d.backward()
                 optimiser_d.step()
 
-                epoch_report['d train loss'] = err_d.data[0]
+                epoch_report['d loss'] = err_d.data[0]
 
                 if update == 0:
                     vutils.save_image(obs_d.data,
@@ -293,7 +295,7 @@ if __name__ == "__main__":
                 err_g = criterion_gan(out_d_g, real_labels)
                 losses.append(err_g)
 
-                epoch_report['g train loss'] = err_g.data[0]
+                epoch_report['g loss'] = err_g.data[0]
 
                 if update % 100 == 0:
                     state_sample = net.G(fixed_noise, states_g)
@@ -318,17 +320,14 @@ if __name__ == "__main__":
                 averaging_noise.data.normal_(0, 1)
                 n_samples = net.G(averaging_noise, states_av_expanded.detach())
 
-                n_samples = net.decoder(n_samples)
-                # print('samples size', n_samples.size())
-
-                sample_av = n_samples.mean(dim=0).unsqueeze(0)
+                n_recons = net.decoder(n_samples)
+                sample_av = n_recons.mean(dim=0).unsqueeze(0)
 
                 err_av = criterion_gen_averaged(sample_av, obs_exp.detach())
 
                 # normalise error to ~1
-
                 losses.append(AVERAGING_ERROR_MULTIPLIER * err_av)
-                epoch_report['av train loss'] = err_av.data[0]
+                epoch_report['av loss'] = err_av.data[0]
 
                 if update % 50 == 0:
                     sample_mixture = sample_av.data.cpu().numpy()
@@ -337,37 +336,55 @@ if __name__ == "__main__":
                     joint = np.expand_dims(joint, axis=0)
                     torch_utils.batch_to_sequence(joint, fpath='{}/images/sample_av_{}.gif'.format(output_dir, current_epoch))
 
-                if train_av_future_switch is True:
-                    assert train_pae_switch is False
-                    # get null update (from null observation)
-                    null_update = net.bs_prop.encoder(null_observation).detach()
-                    null_update_expanded1 = null_update.expand(AVERAGE_N_STEPS_AHEAD, 1, -1)
-                    null_update_expanded2 = null_update.expand(AVERAGE_N_STEPS_AHEAD, AVERAGING_BATCH_SIZE, -1)
+            if train_av_future_switch is True:
+                assert train_pae_switch is False
 
-                    # propagate belief in time
-                    _, future_belief = net.bs_prop.gru(null_update_expanded1, hx=states_av)
-                    future_exp = net.decoder(future_belief)
+                n_steps_ahead = int(np.random.randint(1, AVERAGE_N_STEPS_AHEAD))
 
-                    # propagate samples in time
-                    _, future_samples = net.bs_prop.gru(null_update_expanded2, hx=n_samples)
-                    future_recons = net.decoder(future_samples)
+                # draw random states
+                draw = np.random.choice(EP_LEN * PAE_BATCH_SIZE, size=1, replace=False)
+                states_av_fut = states_nonep[draw, ...]
+                states_av_fut_expanded = states_av_fut.expand(AVERAGING_BATCH_SIZE, -1)
 
-                    future_av = future_recons.mean(dim=0).unsqueeze(0)
+                # generate samples from state
+                averaging_noise.data.normal_(0, 1)
+                n_samples_fut = net.G(averaging_noise, states_av_fut_expanded.detach())
 
-                    err_future_av = criterion_gen_averaged(future_av, future_exp.detach())
+                # get null update (from null observation)
+                null_update = net.bs_prop.encoder(null_observation).detach()
+                # print(null_update.size())
+                null_update_expanded1 = null_update.expand(n_steps_ahead, 1, -1)
+                # print(null_update_expanded1.size())
+                null_update_expanded2 = null_update.expand(n_steps_ahead, AVERAGING_BATCH_SIZE, -1)
+                # print(null_update_expanded2.size())
 
-                    # normalise error to ~1
+                # propagate belief in time
+                _, future_belief = net.bs_prop.gru(null_update_expanded1, hx=states_av_fut.view(1, 1, -1))
+                # print(future_belief.size())
+                future_exp = net.decoder(future_belief.view(1, -1))
 
-                    losses.append(AVERAGING_ERROR_MULTIPLIER * err_av)
-                    epoch_report['av train loss'] = err_av.data[0]
+                # propagate samples in time
+                _, future_samples = net.bs_prop.gru(null_update_expanded2, hx=n_samples_fut.view(1, AVERAGING_BATCH_SIZE, -1))
+                _ = None
+                # print(future_samples.size())
+                future_recons = net.decoder(future_samples.view(AVERAGING_BATCH_SIZE, -1))
 
-                    if update % 50 == 0:
-                        sample_mixture = future_av.data.cpu().numpy()
-                        observation_belief = future_exp.data.cpu().numpy()
-                        joint = np.concatenate((observation_belief, sample_mixture), axis=-2)
-                        joint = np.expand_dims(joint, axis=0)
-                        torch_utils.batch_to_sequence(joint,
-                                                      fpath='{}/images/future_av_{}.gif'.format(output_dir, current_epoch))
+                future_av = future_recons.mean(dim=0).unsqueeze(0)
+
+                err_future_av = criterion_gen_averaged(future_av, future_exp.detach())
+
+                # normalise error to ~1
+
+                losses.append(AVERAGING_FUTURE_ERROR_MULTIPLIER * err_future_av)
+                epoch_report['av fut loss'] = err_future_av.data[0]
+
+                if update % 50 == 0:
+                    sample_mixture = future_av.data.cpu().numpy()
+                    observation_belief = future_exp.data.cpu().numpy()
+                    joint = np.concatenate((observation_belief, sample_mixture), axis=-2)
+                    joint = np.expand_dims(joint, axis=0)
+                    torch_utils.batch_to_sequence(joint,
+                                                  fpath='{}/images/future_av_{}.gif'.format(output_dir, current_epoch))
 
             # =====================================
             # UPDATE WEIGHTS HERE!
@@ -412,3 +429,6 @@ if __name__ == "__main__":
             bar.set_postfix(**epoch_report)
 
         torch.save(net.state_dict(), '{}/network/paegan_epoch_{}.pth'.format(output_dir, current_epoch))
+        if compare_with_pf:
+            torch_utils.pf_comparison(net, sim_config, output_dir, current_epoch)
+

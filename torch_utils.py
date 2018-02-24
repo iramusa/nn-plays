@@ -58,9 +58,10 @@ import matplotlib.pyplot as plt
 
 
 def pf_comparison(net, sim_conf, path, gif_no, cuda=True):
+    CONSISTENT_NOISE = False
     RUN_LENGTH = 160
     N_PARTICLES = 100
-    DURATION = 0.2
+    DURATION = 0.5
     N_SIZE = 256
 
     w = World(**sim_conf)
@@ -122,12 +123,16 @@ def pf_comparison(net, sim_conf, path, gif_no, cuda=True):
     obs_expectation = obs_expectation.reshape((RUN_LENGTH, 28, 28))
 
     # create observation samples (constant or varying noise accross time)
-    noise = Variable(torch.FloatTensor(RUN_LENGTH, N_SIZE))
+    if CONSISTENT_NOISE is True:
+        noise = Variable(torch.FloatTensor(1, N_SIZE))
+        noise.data.normal_(0, 1)
+        noise = noise.expand(RUN_LENGTH, N_SIZE)
+    else:
+        noise = Variable(torch.FloatTensor(RUN_LENGTH, N_SIZE))
+        noise.data.normal_(0, 1)
+
     if cuda:
         noise = noise.cuda()
-    # noise = Variable(torch.FloatTensor(1, N_SIZE))
-    noise.data.normal_(0, 1)
-    # noise = noise.expand(RUN_LENGTH, N_SIZE)
 
     # states_non_ep = states.unfold(0, 1, (EP_LEN*BATCH_SIZE)//GAN_BATCH_SIZE).squeeze(-1)
 
@@ -155,7 +160,8 @@ def pf_comparison(net, sim_conf, path, gif_no, cuda=True):
     page = """
     <html>
     <body>
-    <img src="{0}-plot.gif" align="center">
+    Configuration: {1}
+    <img src="{0}-plot.png" align="center">
     <table>
       <tr>
         <th>Ground truth</th>
@@ -176,9 +182,9 @@ def pf_comparison(net, sim_conf, path, gif_no, cuda=True):
     </table>
     </body>
     </html>
-    """.format(gif_no)
+    """.format(gif_no, sim_conf)
 
-    with open("{}/page/page.html".format(path), 'w') as f:
+    with open("{}/page/page-{}.html".format(path, gif_no), 'w') as f:
         f.write(page)
 
     ims_ar = np.array(ims_percept)
@@ -194,6 +200,7 @@ def pf_comparison(net, sim_conf, path, gif_no, cuda=True):
     plt.title("Image reconstruction loss vs timestep")
     plt.ylabel("loss (MSE)")
     plt.xlabel("timestep")
-    plt.legend(["PF", "PAE"])
+    plt.legend(["PF", "PAE", "baseline"])
 
-    plt.imsave("{}/page/{}-plot.gif".format(path, gif_no))
+    plt.savefig("{}/page/{}-plot.png".format(path, gif_no))
+    plt.close()

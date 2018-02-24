@@ -14,8 +14,10 @@ import torch_nets
 
 PAE_BATCH_SIZE = 4
 GAN_BATCH_SIZE = 16
-AVERAGING_BATCH_SIZE = 16
+AVERAGING_BATCH_SIZE = 32
 EP_LEN = 100
+
+AVERAGING_ERROR_MULTIPLIER = 1000
 
 BALLS_OBS_SHAPE = (1, 28, 28)
 
@@ -39,10 +41,10 @@ if __name__ == "__main__":
                         help="Use network that was trained already")
     parser.add_argument('--epochs', default=10, type=int,
                         help="How many epochs to train for?")
-    parser.add_argument('--updates_per_epoch', default=10000, type=int,
+    parser.add_argument('--updates_per_epoch', default=3000, type=int,
                         help="How many updates per epoch?")
     parser.add_argument('--training_stage', type=str,
-                        choices=['pae', 'paegan', 'paegan-sampler', 'sampler'],
+                        choices=['pae', 'paegan', 'paegan-sampler', 'sampler', 'averager', 'd-sampler'],
                         help="Different training modes enable training of different parts of the network")
     parser.add_argument('--p_mask', default=0.99, type=float,
                         help="What fraction of input observations is masked? eg 0.6")
@@ -69,18 +71,18 @@ if __name__ == "__main__":
         train_g_switch = False
         train_av_switch = False
     elif training_stage == "paegan":
-        train_pae_switch = True
+        train_pae_switch = False
         train_d_switch = True
         train_g_switch = True
         train_av_switch = True
-    elif training_stage == "paegan-sampler":
-        train_pae_switch = True
-        train_d_switch = False
+    elif training_stage == "d-sampler":
+        train_pae_switch = False
+        train_d_switch = True
         train_g_switch = True
         train_av_switch = True
     elif training_stage == "sampler":
-        train_d_every_n_updates = 20
-        train_pae_switch = True
+        train_d_every_n_updates = 5
+        train_pae_switch = False
         train_d_switch = True
         train_g_switch = True
         train_av_switch = True
@@ -191,6 +193,8 @@ if __name__ == "__main__":
     epoch_report = {}
     until_epoch = current_epoch + n_epochs
     for current_epoch in range(current_epoch, until_epoch):
+        torch_utils.pf_comparison(net, sim_config, output_dir, current_epoch)
+
         bar = tqdm.trange(updates_per_epoch)
         epoch_report['epoch'] = '[{}/{}]'.format(current_epoch, until_epoch)
 
@@ -312,7 +316,10 @@ if __name__ == "__main__":
                 sample_av = n_samples.mean(dim=0).unsqueeze(0)
 
                 err_av = criterion_gen_averaged(sample_av, obs_exp.detach())
-                losses.append(10*err_av)
+
+                # normalise error to ~1
+
+                losses.append(AVERAGING_ERROR_MULTIPLIER * err_av)
                 epoch_report['av train loss'] = err_av.data[0]
 
                 if update % 10 == 0:
@@ -336,7 +343,7 @@ if __name__ == "__main__":
             # pae validation error and image record
             if update % 100 == 0:
                 batch = valid_getter()
-                masked = torch_utils.mask_percepts(batch, p=P_NO_OBS_VALID)
+                masked = torch_utils.mask_percepts(batch, p=p_mask)
 
                 batch = batch.transpose((1, 0, 4, 2, 3))
                 masked = masked.transpose((1, 0, 4, 2, 3))

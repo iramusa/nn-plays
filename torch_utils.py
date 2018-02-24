@@ -4,7 +4,7 @@ import imageio
 
 from torch_experiment import EP_LEN, UNCERTAIN_PERCEPTS, GUARANTEED_PERCEPTS
 
-FOLDERS = ['images', 'network', 'numerical', 'plots']
+FOLDERS = ['images', 'network', 'numerical', 'plots', 'page']
 
 
 def make_dir_tree(parent_dir):
@@ -54,12 +54,14 @@ from particle_filter import ParticleFilter
 from balls_sim import World
 from torch.autograd import Variable
 import torch
+import matplotlib.pyplot as plt
 
 
-def pf_comparison(net, sim_conf, N_SIZE, gif_no=0):
+def pf_comparison(net, sim_conf, path, gif_no):
     RUN_LENGTH = 260
     N_PARTICLES = 1000
     DURATION = 0.2
+    N_SIZE = 256
 
     w = World(**sim_conf)
 
@@ -144,43 +146,53 @@ def pf_comparison(net, sim_conf, N_SIZE, gif_no=0):
         pae_samples_ims.append(pae_samples[i, ...])
         loss_pae.append(np.mean((ims_percept[i] - obs_expectation[i, ...]) ** 2))
 
-    imageio.mimsave("ims/{}-percept.gif".format(gif_no), ims_percept, duration=DURATION)
-    imageio.mimsave("ims/{}-pf_belief.gif".format(gif_no), ims_pf_belief, duration=DURATION)
-    imageio.mimsave("ims/{}-pf_sample.gif".format(gif_no), ims_pf_sample, duration=DURATION)
-    imageio.mimsave("ims/{}-pae_belief.gif".format(gif_no), pae_ims, duration=DURATION)
-    imageio.mimsave("ims/{}-pae_sample.gif".format(gif_no), pae_samples_ims, duration=DURATION)
+    imageio.mimsave("{}-percept.gif".format(gif_no), ims_percept, duration=DURATION)
+    imageio.mimsave("{}-pf_belief.gif".format(gif_no), ims_pf_belief, duration=DURATION)
+    imageio.mimsave("{}-pf_sample.gif".format(gif_no), ims_pf_sample, duration=DURATION)
+    imageio.mimsave("{}-pae_belief.gif".format(gif_no), pae_ims, duration=DURATION)
+    imageio.mimsave("{}-pae_sample.gif".format(gif_no), pae_samples_ims, duration=DURATION)
 
     ims_ar = np.array(ims_percept)
     av_pixel_intensity = np.mean(ims_ar)
     baseline_level = np.mean((ims_ar - av_pixel_intensity) ** 2)
     baseline = np.ones(len(loss_mse)) * baseline_level
     print("Uninformative baseline level at {}".format(baseline_level))
-    #
-    # plt.plot(loss_mse)
-    # plt.plot(loss_pae)
-    # plt.plot(baseline, 'g--')
-    #
-    # plt.title("Image reconstruction loss vs timestep")
-    # plt.ylabel("loss (MSE)")
-    # plt.xlabel("timestep")
-    # plt.legend(["PF", "PAE"])
-    #
-    # HTML("""
-    # <table>
-    #   <tr>
-    #     <th>Ground truth</th>
-    #     <th>Particle Filter</th>
-    #     <th>PF Sample</th>
-    #     <th>Predictive AE</th>
-    #     <th>PAE Sample</th>
-    #   </tr>
-    #   <tr>
-    #     <td><img src="../ims/{0}-percept.gif" width="140"></td>
-    #     <td><img src="../ims/{0}-pf_belief.gif" width="140"></td>
-    #     <td><img src="../ims/{0}-pf_sample.gif" width="140"></td>
-    #     <td><img src="../ims/{0}-pae_belief.gif" width="140"></td>
-    #     <td><img src="../ims/{0}-pae_sample.gif" width="140"></td>
-    #
-    #   </tr>
-    #
-    # </table>""".format(gif_no))
+
+    plt.plot(loss_mse)
+    plt.plot(loss_pae)
+    plt.plot(baseline, 'g--')
+
+    plt.title("Image reconstruction loss vs timestep")
+    plt.ylabel("loss (MSE)")
+    plt.xlabel("timestep")
+    plt.legend(["PF", "PAE"])
+
+    page = """
+    <html>
+    <body>
+    <table>
+      <tr>
+        <th>Ground truth</th>
+        <th>Particle Filter</th>
+        <th>PF Sample</th>
+        <th>Predictive AE</th>
+        <th>PAE Sample</th>
+      </tr>
+      <tr>
+        <td><img src="{0}-percept.gif" width="140"></td>
+        <td><img src="{0}-pf_belief.gif" width="140"></td>
+        <td><img src="{0}-pf_sample.gif" width="140"></td>
+        <td><img src="{0}-pae_belief.gif" width="140"></td>
+        <td><img src="{0}-pae_sample.gif" width="140"></td>
+
+      </tr>
+
+    </table>
+    </body>
+    </html>
+    """.format(gif_no)
+
+    with open("{}/page/page.html", 'w') as f:
+        f.write(page)
+
+    plt.imsave("{}-plot.gif".format(gif_no))

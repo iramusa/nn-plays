@@ -60,7 +60,7 @@ import matplotlib.pyplot as plt
 def pf_comparison(net, sim_conf, path, gif_no, cuda=True):
     CONSISTENT_NOISE = False
     RUN_LENGTH = 160
-    N_PARTICLES = 100
+    N_PARTICLES = 400
     DURATION = 0.5
     N_SIZE = 256
 
@@ -84,7 +84,7 @@ def pf_comparison(net, sim_conf, path, gif_no, cuda=True):
 
     for i in range(RUN_LENGTH):
         if i < 8:
-            measures = [body.pos for body in w.bodies]
+            measures = [body.pos + sim_conf['measurement_noise'] * np.random.randn(2)for body in w.bodies]
             pf.update(measures)
             pf.resample()
 

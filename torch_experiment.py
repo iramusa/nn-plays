@@ -115,8 +115,8 @@ if __name__ == "__main__":
         sim_config = torch.load('{}/train.conf'.format(args.data_dir))
         obs_shape = BALLS_OBS_SHAPE
 
-        # train_container = DataContainer('{}/train.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
-        train_container = DataContainer('{}/valid.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
+        train_container = DataContainer('{}/train.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
+        # train_container = DataContainer('{}/valid.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
         valid_container = DataContainer('{}/valid.pt'.format(args.data_dir), batch_size=PAE_BATCH_SIZE)
         sim_config = torch.load(open('{}/train.conf'.format(args.data_dir), 'rb'))
 
@@ -365,7 +365,6 @@ if __name__ == "__main__":
 
                 # propagate samples in time
                 _, future_samples = net.bs_prop.gru(null_update_expanded2, hx=n_samples_fut.view(1, AVERAGING_BATCH_SIZE, -1))
-                _ = None
                 # print(future_samples.size())
                 future_recons = net.decoder(future_samples.view(AVERAGING_BATCH_SIZE, -1))
 

@@ -48,6 +48,8 @@ class ParticleFilter(object):
                 if vel is not None:
                     body.vel = copy.deepcopy(vel[j])
 
+        self.add_noise(self.measurement_noise)
+
     def add_noise(self, noise_level=0.2):
         for part in self.parts:
             for body in part.bodies:

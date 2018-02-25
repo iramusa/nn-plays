@@ -23,7 +23,7 @@ AVERAGE_N_STEPS_AHEAD = 4
 
 BALLS_OBS_SHAPE = (1, 28, 28)
 
-GUARANTEED_PERCEPTS = 6
+GUARANTEED_PERCEPTS = 4
 UNCERTAIN_PERCEPTS = 4
 P_NO_OBS_VALID = 1.0
 
@@ -50,9 +50,12 @@ if __name__ == "__main__":
                         help="Different training modes enable training of different parts of the network")
     parser.add_argument('--p_mask', default=0.99, type=float,
                         help="What fraction of input observations is masked? eg 0.6")
+    parser.add_argument('--reward_only_masked', default=False, type=bool,
+                        help="Should pae train only from masked observations error or all? Use only if observations are"
+                             "noisy.")
     parser.add_argument('--compare_with_pf', default=False, type=bool,
                         help="Should the results be compared with particle filter?")
-    parser.add_argument('--cuda', default=True, type=bool,
+    parser.add_argument('--cuda', default=False, type=bool,
                         help="Should CUDA be used?")
 
     args = parser.parse_args()
@@ -65,8 +68,9 @@ if __name__ == "__main__":
     training_stage = args.training_stage
     use_cuda = args.cuda
     p_mask = args.p_mask
-    train_d_every_n_updates = 1
     compare_with_pf = args.compare_with_pf
+    train_d_every_n_updates = 1
+    reward_only_masked = args.reward_only_masked
 
     train_pae_switch = False
     train_d_switch = False
@@ -148,12 +152,11 @@ if __name__ == "__main__":
     else:
         current_epoch = 0
 
-    # build report file
-
     # initialise variables
     real_label = 1
     fake_label = 0
     if use_cuda:
+        print("Using CUDA.")
         net = net.cuda()
         criterion_pae = nn.MSELoss().cuda()
         criterion_gan = nn.BCELoss().cuda()
@@ -172,6 +175,8 @@ if __name__ == "__main__":
         real_labels = Variable(torch.FloatTensor(GAN_BATCH_SIZE, 1).cuda())
         null_observation = Variable(torch.FloatTensor(1, *BALLS_OBS_SHAPE).cuda())
     else:
+        print("Not using CUDA.")
+        net.cpu()
         criterion_pae = nn.MSELoss()
         criterion_gan = nn.BCELoss()
         # criterion_gan = nn.MSELoss()
@@ -202,7 +207,7 @@ if __name__ == "__main__":
 
     # start training
     epoch_report = {}
-    until_epoch = current_epoch + n_epochs
+    until_epoch = current_epoch + n_epochs + 1
     for current_epoch in range(current_epoch, until_epoch):
 
         bar = tqdm.trange(updates_per_epoch)
@@ -213,7 +218,7 @@ if __name__ == "__main__":
             losses = []
 
             batch = train_getter()
-            masked = torch_utils.mask_percepts(batch, p=p_mask)
+            masked, masked_indices = torch_utils.mask_percepts(batch, p=p_mask, return_indices=True)
 
             batch = batch.transpose((1, 0, 4, 2, 3))
             masked = masked.transpose((1, 0, 4, 2, 3))
@@ -236,7 +241,15 @@ if __name__ == "__main__":
 
             elif train_pae_switch is True:
                 obs_expectation = net.decoder(states_nonep).view(obs_in.size())
-                err_pae = criterion_pae(obs_expectation, obs_out)
+                if reward_only_masked:
+                    masked_indices = torch.ByteTensor(masked_indices.astype('int')).nonzero()
+                    if use_cuda:
+                        masked_indices = masked_indices.cuda()
+                    err_pae = criterion_pae(obs_expectation[masked_indices, :, ...], obs_out[masked_indices, :, ...])
+                    # err_pae_full = 0.05 * criterion_pae(obs_expectation, obs_out)
+                    # losses.append(err_pae_full)
+                else:
+                    err_pae = criterion_pae(obs_expectation, obs_out)
                 losses.append(err_pae)
                 epoch_report['pae train loss'] = err_pae.data[0]
 
@@ -399,7 +412,7 @@ if __name__ == "__main__":
             # pae validation error and image record
             if update % 100 == 0:
                 batch = valid_getter()
-                masked = torch_utils.mask_percepts(batch, p=p_mask)
+                masked, masked_indices = torch_utils.mask_percepts(batch, p=p_mask, return_indices=True)
 
                 batch = batch.transpose((1, 0, 4, 2, 3))
                 masked = masked.transpose((1, 0, 4, 2, 3))
@@ -415,7 +428,14 @@ if __name__ == "__main__":
                 states_nonep = states_ep.view(EP_LEN * PAE_BATCH_SIZE, -1)
 
                 obs_expectation = net.decoder(states_nonep).view(obs_in.size())
-                err_valid_pae = criterion_pae(obs_expectation, obs_out)
+
+                if reward_only_masked:
+                    masked_indices = torch.ByteTensor(masked_indices.astype('int')).nonzero()
+                    if use_cuda:
+                        masked_indices = masked_indices.cuda()
+                    err_valid_pae = criterion_pae(obs_expectation[masked_indices, :, ...], obs_out[masked_indices, :, ...])
+                else:
+                    err_valid_pae = criterion_pae(obs_expectation, obs_out)
                 epoch_report['pae valid loss'] = err_valid_pae.data[0]
 
                 # print a gif
